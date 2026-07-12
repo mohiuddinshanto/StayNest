@@ -1,17 +1,18 @@
 'use client';
 
-import React, { Suspense, useState, useMemo, useEffect } from "react";
+import React, { Suspense, useState, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { Search, X, Filter, ChevronLeft, ChevronRight, MapPin } from "lucide-react";
-import { useProperties } from "@/context/PropertyContext";
+import { Search, X, Filter, ChevronLeft, ChevronRight } from "lucide-react";
 import { PropertyCard } from "@/components/PropertyCard";
 import { Badge } from "@/components/Badge";
+import { SkeletonCard } from "@/components/SkeletonCard";
+import { fetchProperties } from "@/lib/api";
+import type { Property } from "@/types";
+import toast from "react-hot-toast";
 
 function ExploreContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-
-  const { properties } = useProperties();
 
   // Get initial values from query parameters
   const initialQuery = searchParams.get("query") || "";
@@ -25,6 +26,12 @@ function ExploreContent() {
   const [sortBy, setSortBy] = useState("newest");
   const [page, setPage] = useState(1);
   const [showFilters, setShowFilters] = useState(false);
+
+  const [properties, setProperties] = useState<Property[]>([]);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [loading, setLoading] = useState(true);
+
   const PER_PAGE = 8;
 
   // Sync state if search params change externally (e.g. navigation link clicks)
@@ -34,47 +41,41 @@ function ExploreContent() {
     setPage(1);
   }, [searchParams]);
 
-  const filtered = useMemo(() => {
-    let list = [...properties];
-    if (query) {
-      list = list.filter(
-        (p) =>
-          p.title.toLowerCase().includes(query.toLowerCase()) ||
-          p.city.toLowerCase().includes(query.toLowerCase()) ||
-          p.address.toLowerCase().includes(query.toLowerCase())
-      );
+  // Fetch properties from backend API when filters change
+  useEffect(() => {
+    let active = true;
+    async function load() {
+      setLoading(true);
+      try {
+        const res = await fetchProperties({
+          q: query || undefined,
+          type: type || undefined,
+          minPrice: minPrice || undefined,
+          maxPrice: maxPrice || undefined,
+          beds: beds || undefined,
+          sort: sortBy || undefined,
+          page,
+          limit: PER_PAGE,
+        });
+        if (active) {
+          setProperties(res.data);
+          setTotal(res.pagination.total);
+          setTotalPages(res.pagination.totalPages);
+        }
+      } catch (err: any) {
+        console.error("Failed to load properties:", err);
+        toast.error("Failed to load properties from API");
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
+      }
     }
-    if (type !== "all") {
-      list = list.filter((p) => p.type === type);
-    }
-    if (minPrice) {
-      list = list.filter((p) => p.rent >= Number(minPrice));
-    }
-    if (maxPrice) {
-      list = list.filter((p) => p.rent <= Number(maxPrice));
-    }
-    if (beds !== "any") {
-      list = list.filter((p) =>
-        beds === "5+" ? p.bedrooms >= 5 : p.bedrooms === Number(beds)
-      );
-    }
-    if (sortBy === "price-asc") {
-      list.sort((a, b) => a.rent - b.rent);
-    } else if (sortBy === "price-desc") {
-      list.sort((a, b) => b.rent - a.rent);
-    } else if (sortBy === "rating") {
-      list.sort((a, b) => b.rating - a.rating);
-    } else {
-      list.sort(
-        (a, b) =>
-          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      );
-    }
-    return list;
-  }, [properties, query, type, minPrice, maxPrice, beds, sortBy]);
-
-  const totalPages = Math.ceil(filtered.length / PER_PAGE);
-  const paginated = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
+    load();
+    return () => {
+      active = false;
+    };
+  }, [query, type, minPrice, maxPrice, beds, sortBy, page]);
 
   const clearFilters = () => {
     setQuery("");
@@ -84,16 +85,8 @@ function ExploreContent() {
     setBeds("any");
     setSortBy("newest");
     setPage(1);
-    // Clear URL parameters as well
     router.push("/explore");
   };
-
-  const fmt = (n: number) =>
-    new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-      maximumFractionDigits: 0,
-    }).format(n);
 
   return (
     <div className="min-h-screen bg-slate-50 pt-20">
@@ -245,12 +238,19 @@ function ExploreContent() {
         <div className="flex items-center justify-between mb-6">
           <p className="text-slate-500 text-sm">
             <span className="font-semibold text-slate-800">
-              {filtered.length}
+              {total}
             </span>{" "}
             properties found
           </p>
         </div>
-        {paginated.length === 0 ? (
+
+        {loading ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <SkeletonCard key={i} />
+            ))}
+          </div>
+        ) : properties.length === 0 ? (
           <div className="text-center py-24">
             <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <Search size={32} className="text-slate-400" />
@@ -270,14 +270,14 @@ function ExploreContent() {
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-            {paginated.map((p) => (
+            {properties.map((p) => (
               <PropertyCard key={p.id} property={p} compact />
             ))}
           </div>
         )}
 
         {/* Pagination */}
-        {totalPages > 1 && (
+        {!loading && totalPages > 1 && (
           <div className="flex items-center justify-center gap-2 mt-10">
             <button
               onClick={() => setPage((p) => Math.max(1, p - 1))}

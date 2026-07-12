@@ -1,13 +1,15 @@
 'use client';
 
-import React, { useState } from "react";
-import { useRouter } from "next/navigation";
+import React, { useState, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Home } from "lucide-react";
-import { useProperties, DEMO_USER } from "@/context/PropertyContext";
+import { signIn, signUp } from "@/lib/auth-client";
+import toast from "react-hot-toast";
 
-export default function AuthPage() {
+function AuthContent() {
   const router = useRouter();
-  const { login } = useProperties();
+  const searchParams = useSearchParams();
+  const redirectUrl = searchParams.get("redirect") || "/";
 
   const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
@@ -34,33 +36,148 @@ export default function AuthPage() {
     return e;
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const e = validate();
     if (Object.keys(e).length) {
       setErrors(e);
+      toast.error("Please fix validation errors");
       return;
     }
-    setLoading(true);
-    setTimeout(() => {
-      login({
-        id: "u1",
-        name: mode === "register" ? name : "Alex Johnson",
-        email,
-        avatar: DEMO_USER.avatar,
-      });
-      router.push("/");
-    }, 1200);
+    setErrors({});
+
+    if (mode === "login") {
+      setLoading(true);
+      const toastId = toast.loading("Signing in...");
+      try {
+        await signIn.email(
+          {
+            email,
+            password,
+          },
+          {
+            onSuccess: () => {
+              toast.success("Welcome back to StayNest!", { id: toastId });
+              router.push(redirectUrl);
+              router.refresh();
+            },
+            onError: (ctx) => {
+              setLoading(false);
+              toast.error(ctx.error.message || "Invalid credentials", { id: toastId });
+            },
+          }
+        );
+      } catch (err: any) {
+        setLoading(false);
+        toast.error(err.message || "An unexpected error occurred", { id: toastId });
+      }
+    } else {
+      setLoading(true);
+      const toastId = toast.loading("Creating account...");
+      try {
+        await signUp.email(
+          {
+            email,
+            password,
+            name,
+          },
+          {
+            onSuccess: () => {
+              toast.success("Account created successfully! Welcome to StayNest.", { id: toastId });
+              router.push(redirectUrl);
+              router.refresh();
+            },
+            onError: (ctx) => {
+              setLoading(false);
+              toast.error(ctx.error.message || "Failed to create account", { id: toastId });
+            },
+          }
+        );
+      } catch (err: any) {
+        setLoading(false);
+        toast.error(err.message || "An unexpected error occurred", { id: toastId });
+      }
+    }
   };
 
-  const demoLogin = () => {
+  const googleLogin = async () => {
+    setLoading(true);
+    const toastId = toast.loading("Redirecting to Google...");
+    try {
+      await signIn.social(
+        {
+          provider: "google",
+          callbackURL: window.location.origin + redirectUrl,
+        },
+        {
+          onError: (ctx) => {
+            setLoading(false);
+            toast.error(ctx.error.message || "Google Sign In failed", { id: toastId });
+          },
+        }
+      );
+    } catch (err: any) {
+      setLoading(false);
+      toast.error(err.message || "An error occurred with Google Sign In", { id: toastId });
+    }
+  };
+
+  const demoLogin = async () => {
     setEmail("alex@example.com");
     setPassword("demo12345");
     setLoading(true);
-    setTimeout(() => {
-      login(DEMO_USER);
-      router.push("/");
-    }, 800);
+    const toastId = toast.loading("Logging in as demo user...");
+
+    const performSignIn = async () => {
+      await signIn.email(
+        {
+          email: "alex@example.com",
+          password: "demo12345",
+        },
+        {
+          onSuccess: () => {
+            toast.success("Welcome back, Demo User!", { id: toastId });
+            router.push(redirectUrl);
+            router.refresh();
+          },
+          onError: async (ctx) => {
+            // Try to sign up if credentials fail
+            toast.loading("Demo account not found. Registering new demo account...", { id: toastId });
+            try {
+              await signUp.email(
+                {
+                  email: "alex@example.com",
+                  password: "demo12345",
+                  name: "Alex Johnson",
+                },
+                {
+                  onSuccess: () => {
+                    toast.success("Demo account registered and logged in!", { id: toastId });
+                    router.push(redirectUrl);
+                    router.refresh();
+                  },
+                  onError: (signUpCtx) => {
+                    setLoading(false);
+                    toast.error(signUpCtx.error.message || "Failed to register demo account", { id: toastId });
+                  }
+                }
+              );
+            } catch (signUpErr: any) {
+              setLoading(false);
+              toast.error(signUpErr.message || "Failed to register demo account", { id: toastId });
+            }
+          },
+        }
+      );
+    };
+
+    try {
+      await performSignIn();
+    } catch (err: any) {
+      setLoading(false);
+      toast.error(err.message || "Failed to login as demo user", { id: toastId });
+    }
   };
+
 
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center pt-20 pb-12 px-4 text-left">
@@ -104,7 +221,11 @@ export default function AuthPage() {
           </div>
 
           {/* Google Login */}
-          <button className="w-full flex items-center justify-center gap-3 py-3 border-2 border-gray-200 rounded-xl text-slate-600 font-medium text-sm hover:border-gray-300 hover:bg-slate-50 bg-white transition-colors mb-4 cursor-pointer">
+          <button
+            onClick={googleLogin}
+            disabled={loading}
+            className="w-full flex items-center justify-center gap-3 py-3 border-2 border-gray-200 rounded-xl text-slate-600 font-medium text-sm hover:border-gray-300 hover:bg-slate-50 bg-white transition-colors mb-4 cursor-pointer disabled:opacity-60"
+          >
             <svg width="18" height="18" viewBox="0 0 48 48">
               <path
                 fill="#FFC107"
@@ -143,6 +264,7 @@ export default function AuthPage() {
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Alex Johnson"
+                  disabled={loading}
                   className={`w-full border rounded-xl px-4 py-3 text-sm outline-none transition-colors h-11 ${
                     errors.name
                       ? "border-red-400 bg-red-50"
@@ -163,6 +285,7 @@ export default function AuthPage() {
                 onChange={(e) => setEmail(e.target.value)}
                 type="email"
                 placeholder="you@example.com"
+                disabled={loading}
                 className={`w-full border rounded-xl px-4 py-3 text-sm outline-none transition-colors h-11 ${
                   errors.email
                     ? "border-red-400 bg-red-50"
@@ -182,6 +305,7 @@ export default function AuthPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 type="password"
                 placeholder="Minimum 8 characters"
+                disabled={loading}
                 className={`w-full border rounded-xl px-4 py-3 text-sm outline-none transition-colors h-11 ${
                   errors.password
                     ? "border-red-400 bg-red-50"
@@ -192,13 +316,6 @@ export default function AuthPage() {
                 <p className="text-red-500 text-xs mt-1">{errors.password}</p>
               )}
             </div>
-            {mode === "login" && (
-              <div className="flex justify-end">
-                <button className="text-sm text-blue-600 hover:underline font-medium bg-transparent border-none cursor-pointer">
-                  Forgot password?
-                </button>
-              </div>
-            )}
             <button
               onClick={handleSubmit}
               disabled={loading}
@@ -217,7 +334,8 @@ export default function AuthPage() {
             </p>
             <button
               onClick={demoLogin}
-              className="w-full py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-lg text-sm transition-colors border-none cursor-pointer"
+              disabled={loading}
+              className="w-full py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-lg text-sm transition-colors border-none cursor-pointer disabled:opacity-60"
             >
               Login as Demo User
             </button>
@@ -225,5 +343,19 @@ export default function AuthPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function AuthPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center pt-20 bg-slate-50">
+          <div className="w-10 h-10 border-4 border-blue-600/30 border-t-blue-600 rounded-full animate-spin mx-auto mb-3" />
+        </div>
+      }
+    >
+      <AuthContent />
+    </Suspense>
   );
 }

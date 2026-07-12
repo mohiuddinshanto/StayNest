@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, use } from "react";
+import React, { useState, useEffect, use } from "react";
 import { useRouter } from "next/navigation";
 import {
   MapPin,
@@ -33,6 +33,9 @@ import { PropertyCard } from "@/components/PropertyCard";
 import { Stars } from "@/components/Stars";
 import { Badge } from "@/components/Badge";
 import { Modal } from "@/components/Modal";
+import { fetchPropertyById, createReview, fetchProperties } from "@/lib/api";
+import type { Property } from "@/types";
+import toast from "react-hot-toast";
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -41,13 +44,21 @@ interface PageProps {
 export default function PropertyDetailsPage({ params }: PageProps) {
   const router = useRouter();
   const { id } = use(params);
-  const { properties } = useProperties();
+  const { isLoggedIn, user } = useProperties();
 
-  const property = properties.find((p) => p.id === id);
+  const [property, setProperty] = useState<Property | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [related, setRelated] = useState<Property[]>([]);
+
   const [galleryIdx, setGalleryIdx] = useState(0);
   const [contactOpen, setContactOpen] = useState(false);
   const [contactMsg, setContactMsg] = useState("");
   const [msgSent, setMsgSent] = useState(false);
+
+  // Review states
+  const [userRating, setUserRating] = useState(5);
+  const [userComment, setUserComment] = useState("");
+  const [submittingReview, setSubmittingReview] = useState(false);
 
   const AMENITY_ICONS: Record<string, any> = {
     WiFi: Wifi,
@@ -63,9 +74,77 @@ export default function PropertyDetailsPage({ params }: PageProps) {
     Concierge: Bell,
   };
 
+  const loadProperty = async () => {
+    try {
+      setLoading(true);
+      const data = await fetchPropertyById(id);
+      setProperty(data);
+      setGalleryIdx(0);
+
+      // Load related properties in same city
+      const relatedRes = await fetchProperties({ city: data.city, limit: 4 });
+      setRelated(relatedRes.data.filter((p) => p.id !== data.id).slice(0, 3));
+    } catch (err: any) {
+      console.error(err);
+      toast.error("Failed to load property details");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadProperty();
+  }, [id]);
+
+  const handleReviewSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isLoggedIn) {
+      toast.error("You must be logged in to submit a review");
+      router.push(`/auth?redirect=/property/${id}`);
+      return;
+    }
+    if (!userComment.trim()) {
+      toast.error("Please enter a review comment");
+      return;
+    }
+
+    setSubmittingReview(true);
+    const toastId = toast.loading("Submitting review...");
+    try {
+      await createReview({
+        propertyId: id,
+        userName: user?.name || "Guest",
+        userImage: user?.avatar,
+        rating: userRating,
+        comment: userComment,
+      });
+
+      toast.success("Review posted successfully!", { id: toastId });
+      setUserComment("");
+      setUserRating(5);
+      // Reload property to show new review and updated rating
+      await loadProperty();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to submit review", { id: toastId });
+    } finally {
+      setSubmittingReview(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center pt-20 bg-slate-50">
+        <div className="text-center">
+          <div className="w-10 h-10 border-4 border-blue-600/30 border-t-blue-600 rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-slate-500 text-sm font-medium">Loading property details...</p>
+        </div>
+      </div>
+    );
+  }
+
   if (!property) {
     return (
-      <div className="min-h-screen flex items-center justify-center pt-20">
+      <div className="min-h-screen flex items-center justify-center pt-20 bg-slate-50">
         <div className="text-center">
           <h2 className="text-2xl font-bold text-slate-700 mb-3">
             Property not found
@@ -80,10 +159,6 @@ export default function PropertyDetailsPage({ params }: PageProps) {
       </div>
     );
   }
-
-  const related = properties
-    .filter((p) => p.id !== id && p.city === property.city)
-    .slice(0, 3);
 
   const fmt = (n: number) =>
     new Intl.NumberFormat("en-US", {
@@ -265,7 +340,7 @@ export default function PropertyDetailsPage({ params }: PageProps) {
               </div>
             </div>
 
-            {/* Reviews */}
+            {/* Reviews Section */}
             <div>
               <h2 className="text-xl font-bold text-slate-800 mb-6">
                 Guest Reviews
@@ -282,10 +357,10 @@ export default function PropertyDetailsPage({ params }: PageProps) {
                 </div>
                 <div className="flex-1 space-y-1.5">
                   {[5, 4, 3, 2, 1].map((star) => {
-                    const count = property.reviews.filter(
-                      (r) => r.rating === star
-                    ).length;
-                    const pct = property.reviews.length
+                    const count = property.reviews
+                      ? property.reviews.filter((r) => r.rating === star).length
+                      : 0;
+                    const pct = property.reviews && property.reviews.length
                       ? (count / property.reviews.length) * 100
                       : 0;
                     return (
@@ -307,38 +382,109 @@ export default function PropertyDetailsPage({ params }: PageProps) {
                   })}
                 </div>
               </div>
-              <div className="space-y-5">
-                {property.reviews.map((r) => (
-                  <div
-                    key={r.id}
-                    className="border-b border-gray-100 pb-5 last:border-0"
-                  >
-                    <div className="flex items-center gap-3 mb-3">
-                      <img
-                        src={r.userImage}
-                        alt={r.userName}
-                        className="w-10 h-10 rounded-full object-cover"
-                      />
-                      <div className="flex-1">
-                        <p className="font-semibold text-slate-800 text-sm">
-                          {r.userName}
-                        </p>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          <Stars rating={r.rating} size={12} />
-                          <span className="text-xs text-slate-400">
-                            {new Date(r.date).toLocaleDateString("en-US", {
-                              month: "long",
-                              year: "numeric",
-                            })}
-                          </span>
-                        </div>
+
+              {/* Submit Review Form */}
+              <div className="bg-slate-50 border border-gray-100 rounded-2xl p-6 mb-8 text-left">
+                <h3 className="text-lg font-bold text-slate-800 mb-4">Write a Review</h3>
+                {isLoggedIn ? (
+                  <form onSubmit={handleReviewSubmit} className="space-y-4">
+                    <div>
+                      <label className="text-sm font-semibold text-slate-600 mb-1.5 block">
+                        Rating
+                      </label>
+                      <div className="flex gap-1.5">
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <button
+                            key={star}
+                            type="button"
+                            onClick={() => setUserRating(star)}
+                            className="bg-transparent border-none cursor-pointer p-0.5"
+                          >
+                            <Star
+                              size={24}
+                              className={
+                                star <= userRating
+                                  ? "text-amber-400 fill-amber-400"
+                                  : "text-slate-300"
+                              }
+                            />
+                          </button>
+                        ))}
                       </div>
                     </div>
-                    <p className="text-slate-600 text-sm leading-relaxed">
-                      {r.comment}
-                    </p>
-                  </div>
-                ))}
+                    <div>
+                      <label className="text-sm font-semibold text-slate-600 mb-1.5 block">
+                        Your Comment
+                      </label>
+                      <textarea
+                        rows={4}
+                        value={userComment}
+                        onChange={(e) => setUserComment(e.target.value)}
+                        placeholder="Tell us about your experience..."
+                        disabled={submittingReview}
+                        className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 resize-none bg-white"
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={submittingReview}
+                      className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition-colors flex items-center gap-2 border-none cursor-pointer disabled:opacity-60"
+                    >
+                      <Send size={15} />
+                      {submittingReview ? "Posting..." : "Post Review"}
+                    </button>
+                  </form>
+                ) : (
+                  <p className="text-slate-500 text-sm">
+                    Please{" "}
+                    <button
+                      onClick={() => router.push(`/auth?redirect=/property/${id}`)}
+                      className="text-blue-600 font-bold hover:underline bg-transparent border-none p-0 cursor-pointer"
+                    >
+                      Sign In
+                    </button>{" "}
+                    to leave a guest review.
+                  </p>
+                )}
+              </div>
+
+              {/* Reviews List */}
+              <div className="space-y-5">
+                {property.reviews && property.reviews.length > 0 ? (
+                  property.reviews.map((r) => (
+                    <div
+                      key={r.id}
+                      className="border-b border-gray-100 pb-5 last:border-0"
+                    >
+                      <div className="flex items-center gap-3 mb-3">
+                        <img
+                          src={r.userImage || "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=60&h=60&fit=crop"}
+                          alt={r.userName}
+                          className="w-10 h-10 rounded-full object-cover"
+                        />
+                        <div className="flex-1">
+                          <p className="font-semibold text-slate-800 text-sm">
+                            {r.userName}
+                          </p>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <Stars rating={r.rating} size={12} />
+                            <span className="text-xs text-slate-400">
+                              {new Date(r.date).toLocaleDateString("en-US", {
+                                month: "long",
+                                year: "numeric",
+                              })}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <p className="text-slate-600 text-sm leading-relaxed">
+                        {r.comment}
+                      </p>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-slate-400 text-sm py-4">No reviews yet. Be the first to share your thoughts!</p>
+                )}
               </div>
             </div>
           </div>
@@ -389,7 +535,10 @@ export default function PropertyDetailsPage({ params }: PageProps) {
               >
                 Contact Owner
               </button>
-              <button className="w-full py-3 border-2 border-blue-600 text-blue-600 hover:bg-blue-55 bg-transparent font-semibold rounded-xl transition-colors text-sm cursor-pointer">
+              <button
+                onClick={() => toast.success("Viewing scheduled successfully!")}
+                className="w-full py-3 border-2 border-blue-600 text-blue-600 hover:bg-blue-50 bg-transparent font-semibold rounded-xl transition-colors text-sm cursor-pointer"
+              >
                 Schedule a Viewing
               </button>
             </div>
@@ -401,7 +550,7 @@ export default function PropertyDetailsPage({ params }: PageProps) {
               </h3>
               <div className="flex items-center gap-3 mb-4">
                 <img
-                  src={property.ownerImage}
+                  src={property.ownerImage || "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=80&h=80&fit=crop"}
                   alt={property.ownerName}
                   className="w-12 h-12 rounded-full object-cover"
                 />
@@ -414,20 +563,24 @@ export default function PropertyDetailsPage({ params }: PageProps) {
                 </div>
               </div>
               <div className="space-y-2 text-sm">
-                <a
-                  href={`tel:${property.ownerPhone}`}
-                  className="flex items-center gap-2 text-slate-500 hover:text-blue-600 transition-colors"
-                >
-                  <Phone size={14} />
-                  {property.ownerPhone}
-                </a>
-                <a
-                  href={`mailto:${property.ownerEmail}`}
-                  className="flex items-center gap-2 text-slate-500 hover:text-blue-600 transition-colors"
-                >
-                  <Mail size={14} />
-                  {property.ownerEmail}
-                </a>
+                {property.ownerPhone && (
+                  <a
+                    href={`tel:${property.ownerPhone}`}
+                    className="flex items-center gap-2 text-slate-500 hover:text-blue-600 transition-colors"
+                  >
+                    <Phone size={14} />
+                    {property.ownerPhone}
+                  </a>
+                )}
+                {property.ownerEmail && (
+                  <a
+                    href={`mailto:${property.ownerEmail}`}
+                    className="flex items-center gap-2 text-slate-500 hover:text-blue-600 transition-colors"
+                  >
+                    <Mail size={14} />
+                    {property.ownerEmail}
+                  </a>
+                )}
               </div>
             </div>
 
@@ -502,7 +655,7 @@ export default function PropertyDetailsPage({ params }: PageProps) {
           <div className="p-6 space-y-4 text-left">
             <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl">
               <img
-                src={property.ownerImage}
+                src={property.ownerImage || "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=80&h=80&fit=crop"}
                 alt={property.ownerName}
                 className="w-10 h-10 rounded-full object-cover"
               />
@@ -547,7 +700,10 @@ export default function PropertyDetailsPage({ params }: PageProps) {
               />
             </div>
             <button
-              onClick={() => setMsgSent(true)}
+              onClick={() => {
+                setMsgSent(true);
+                toast.success("Message sent to owner!");
+              }}
               className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-2 border-none cursor-pointer"
             >
               <Send size={16} />

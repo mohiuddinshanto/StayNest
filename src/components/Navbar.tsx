@@ -18,6 +18,7 @@ import {
   LogIn,
 } from "lucide-react";
 import { useProperties } from "@/context/PropertyContext";
+import toast from "react-hot-toast";
 
 export function Navbar() {
   const pathname = usePathname();
@@ -49,10 +50,17 @@ export function Navbar() {
 
   const isTransparent = pathname === "/" && !scrolled && !mobileOpen;
 
-  const handleLogoutClick = () => {
-    logout();
-    router.push("/");
+  const handleLogoutClick = async () => {
+    const toastId = toast.loading("Signing out...");
+    try {
+      await logout();
+      toast.success("Signed out successfully!", { id: toastId });
+      router.push("/");
+    } catch (err: any) {
+      toast.error("Failed to sign out", { id: toastId });
+    }
   };
+
 
   return (
     <nav

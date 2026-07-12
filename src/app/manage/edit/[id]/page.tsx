@@ -1,30 +1,24 @@
 'use client';
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, use } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Check, CheckCircle } from "lucide-react";
-import { useProperties, Property } from "@/context/PropertyContext";
+import { Check, CheckCircle, Save, ArrowLeft } from "lucide-react";
+import { useProperties } from "@/context/PropertyContext";
+import { fetchPropertyById, updateProperty } from "@/lib/api";
+import type { Property } from "@/types";
 import toast from "react-hot-toast";
 
-interface FieldProps {
-  label: string;
-  error?: string;
-  children: React.ReactNode;
+interface PageProps {
+  params: Promise<{ id: string }>;
 }
 
-const Field = ({ label, error, children }: FieldProps) => (
-  <div className="text-left">
-    <label className="text-sm font-semibold text-slate-600 mb-1.5 block">
-      {label}
-    </label>
-    {children}
-    {error && <p className="text-red-500 text-xs mt-1">{error}</p>}
-  </div>
-);
-
-export default function AddPropertyPage() {
+export default function EditPropertyPage({ params }: PageProps) {
   const router = useRouter();
-  const { isLoggedIn, addProperty, user } = useProperties();
+  const { id } = use(params);
+  const { isLoggedIn, user, refreshProperties } = useProperties();
+
+  const [property, setProperty] = useState<Property | null>(null);
+  const [loadingProperty, setLoadingProperty] = useState(true);
 
   const [form, setForm] = useState({
     title: "",
@@ -40,11 +34,12 @@ export default function AddPropertyPage() {
     imageUrl: "",
     available: "",
     amenities: [] as string[],
+    status: "available" as "available" | "rented" | "pending",
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitted, setSubmitted] = useState(false);
-  const [adding, setAdding] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const AMENITY_OPTIONS = [
     "WiFi",
@@ -64,16 +59,61 @@ export default function AddPropertyPage() {
   // Protect route
   useEffect(() => {
     if (!isLoggedIn) {
-      router.push("/auth");
+      router.push(`/auth?redirect=/manage/edit/${id}`);
     }
-  }, [isLoggedIn, router]);
+  }, [isLoggedIn, router, id]);
 
-  if (!isLoggedIn) {
+  // Load existing property data
+  useEffect(() => {
+    async function load() {
+      try {
+        setLoadingProperty(true);
+        const data = await fetchPropertyById(id);
+        
+        // Ownership check
+        if (user && data.ownerId !== user.id && data.ownerEmail !== user.email) {
+          toast.error("Forbidden: You do not own this property listing");
+          router.push("/manage");
+          return;
+        }
+
+        setProperty(data);
+        setForm({
+          title: data.title,
+          shortDescription: data.shortDescription,
+          fullDescription: data.fullDescription || "",
+          rent: String(data.rent),
+          type: data.type,
+          bedrooms: String(data.bedrooms),
+          bathrooms: String(data.bathrooms),
+          area: String(data.area),
+          city: data.city,
+          address: data.address,
+          imageUrl: data.images[0] || "",
+          available: data.available,
+          amenities: data.amenities || [],
+          status: data.status || "available",
+        });
+      } catch (err: any) {
+        console.error("Failed to load property:", err);
+        toast.error("Failed to fetch property details");
+        router.push("/manage");
+      } finally {
+        setLoadingProperty(false);
+      }
+    }
+
+    if (isLoggedIn && user) {
+      load();
+    }
+  }, [id, isLoggedIn, user, router]);
+
+  if (!isLoggedIn || loadingProperty) {
     return (
       <div className="min-h-screen flex items-center justify-center pt-20 bg-slate-50">
         <div className="text-center">
           <div className="w-10 h-10 border-4 border-blue-600/30 border-t-blue-600 rounded-full animate-spin mx-auto mb-3" />
-          <p className="text-slate-500 text-sm">Redirecting to sign in...</p>
+          <p className="text-slate-500 text-sm font-medium">Loading property details...</p>
         </div>
       </div>
     );
@@ -103,12 +143,11 @@ export default function AddPropertyPage() {
       return;
     }
     setErrors({});
-    setAdding(true);
+    setSaving(true);
 
-    const toastId = toast.loading("Adding property...");
+    const toastId = toast.loading("Saving changes...");
     try {
-      const newProp: Property = {
-        id: "", // Will be assigned by backend
+      const updates = {
         title: form.title,
         shortDescription: form.shortDescription,
         fullDescription: form.fullDescription || form.shortDescription,
@@ -124,26 +163,19 @@ export default function AddPropertyPage() {
             "https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=900&h=560&fit=crop",
         ],
         amenities: form.amenities,
-        rating: 0,
-        reviewCount: 0,
-        ownerId: user?.id,
-        ownerName: user?.name || "Host",
-        ownerImage: user?.avatar || "",
-        ownerPhone: "",
-        ownerEmail: user?.email || "",
         available: form.available,
-        status: "available",
-        featured: false,
-        createdAt: new Date().toISOString().split("T")[0],
+        status: form.status,
       };
 
-      await addProperty(newProp);
-      toast.success("Property listed successfully!", { id: toastId });
+      await updateProperty(id, updates);
+      await refreshProperties();
+      
+      toast.success("Property updated successfully!", { id: toastId });
       setSubmitted(true);
     } catch (err: any) {
-      toast.error(err.message || "Failed to list property. Check details.", { id: toastId });
+      toast.error(err.message || "Failed to update property. Check details.", { id: toastId });
     } finally {
-      setAdding(false);
+      setSaving(false);
     }
   };
 
@@ -155,11 +187,10 @@ export default function AddPropertyPage() {
             <CheckCircle size={40} className="text-green-500" />
           </div>
           <h2 className="text-3xl font-extrabold text-slate-800 mb-3">
-            Property Listed!
+            Changes Saved!
           </h2>
           <p className="text-slate-500 mb-8">
-            Your property has been submitted and will go live after a quick
-            review by our team (usually within 24 hours).
+            Your property updates have been successfully saved and published.
           </p>
           <div className="flex gap-3 justify-center">
             <button
@@ -169,28 +200,10 @@ export default function AddPropertyPage() {
               View My Properties
             </button>
             <button
-              onClick={() => {
-                setSubmitted(false);
-                setForm({
-                  title: "",
-                  shortDescription: "",
-                  fullDescription: "",
-                  rent: "",
-                  type: "apartment",
-                  bedrooms: "1",
-                  bathrooms: "1",
-                  area: "",
-                  city: "",
-                  address: "",
-                  imageUrl: "",
-                  available: "",
-                  amenities: [],
-                });
-                setErrors({});
-              }}
+              onClick={() => router.push(`/property/${id}`)}
               className="px-6 py-3 border border-gray-200 text-slate-600 font-semibold bg-white rounded-xl hover:bg-slate-50 cursor-pointer"
             >
-              Add Another
+              View Listing
             </button>
           </div>
         </div>
@@ -198,22 +211,46 @@ export default function AddPropertyPage() {
     );
   }
 
-
+  const Field = ({
+    label,
+    error,
+    children,
+  }: {
+    label: string;
+    error?: string;
+    children: React.ReactNode;
+  }) => (
+    <div className="text-left">
+      <label className="text-sm font-semibold text-slate-600 mb-1.5 block">
+        {label}
+      </label>
+      {children}
+      {error && <p className="text-red-500 text-xs mt-1">{error}</p>}
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-slate-50 pt-24 pb-16">
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-left">
-        <div className="mb-8">
-          <h1
-            className="text-3xl font-extrabold text-slate-800"
-            style={{ fontFamily: "var(--font-heading), Plus Jakarta Sans, sans-serif" }}
-          >
-            List Your Property
-          </h1>
-          <p className="text-slate-500 mt-2">
-            Reach thousands of qualified renters. Listing is free — we only earn
-            when you do.
-          </p>
+        <div className="mb-8 flex items-center justify-between">
+          <div>
+            <button
+              onClick={() => router.push("/manage")}
+              className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-800 transition-colors bg-transparent border-none cursor-pointer mb-2"
+            >
+              <ArrowLeft size={13} />
+              Back to My Properties
+            </button>
+            <h1
+              className="text-3xl font-extrabold text-slate-800"
+              style={{ fontFamily: "var(--font-heading), Plus Jakarta Sans, sans-serif" }}
+            >
+              Edit Listing
+            </h1>
+            <p className="text-slate-500 mt-1">
+              Update details, pricing, and availability for your rental property.
+            </p>
+          </div>
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 space-y-6">
@@ -348,6 +385,26 @@ export default function AddPropertyPage() {
             </div>
           </div>
 
+          {/* Status Select */}
+          <div>
+            <h2 className="text-lg font-bold text-slate-800 mb-4 pb-3 border-b border-gray-100">
+              Listing Status
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <Field label="Status">
+                <select
+                  value={form.status}
+                  onChange={(e) => set("status", e.target.value as any)}
+                  className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-blue-400 h-11"
+                >
+                  <option value="available">Available</option>
+                  <option value="rented">Rented</option>
+                  <option value="pending">Pending</option>
+                </select>
+              </Field>
+            </div>
+          </div>
+
           {/* Location */}
           <div>
             <h2 className="text-lg font-bold text-slate-800 mb-4 pb-3 border-b border-gray-100">
@@ -444,10 +501,15 @@ export default function AddPropertyPage() {
 
           <button
             onClick={handleSubmit}
-            className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition-colors text-base flex items-center justify-center gap-2 border-none cursor-pointer"
+            disabled={saving}
+            className="w-full py-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-bold rounded-xl transition-colors text-base flex items-center justify-center gap-2 border-none cursor-pointer"
           >
-            <Plus size={20} />
-            Submit Listing
+            {saving ? (
+              <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            ) : (
+              <Save size={20} />
+            )}
+            Save Changes
           </button>
         </div>
       </div>
