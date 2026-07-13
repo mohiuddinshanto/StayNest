@@ -1,16 +1,32 @@
 'use client';
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Building2, CheckCircle, Key, Clock, MapPin, Eye, Trash2, Pencil } from "lucide-react";
+import {
+  Plus,
+  Building2,
+  CheckCircle,
+  Key,
+  Clock,
+  MapPin,
+  Eye,
+  Trash2,
+  Pencil,
+  AlertCircle,
+  XCircle,
+} from "lucide-react";
 import { useProperties } from "@/context/PropertyContext";
+import { fetchMyProperties, deleteProperty as deletePropertyApi } from "@/lib/api";
+import type { Property } from "@/types";
 import { Badge } from "@/components/Badge";
 import { Modal } from "@/components/Modal";
 import toast from "react-hot-toast";
 
 export default function ManagePropertiesPage() {
   const router = useRouter();
-  const { isLoggedIn, properties, deleteProperty, user } = useProperties();
+  const { isLoggedIn, user } = useProperties();
+  const [myProps, setMyProps] = useState<Property[]>([]);
+  const [loading, setLoading] = useState(true);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
 
@@ -20,6 +36,25 @@ export default function ManagePropertiesPage() {
       router.push("/auth");
     }
   }, [isLoggedIn, router]);
+
+  const loadMyProperties = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await fetchMyProperties();
+      setMyProps(data);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to load your properties");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Fetch the owner's own properties directly (includes pending/rejected listings
+  // that don't show up in the global, publicly-approved properties list)
+  useEffect(() => {
+    if (!isLoggedIn || !user) return;
+    loadMyProperties();
+  }, [isLoggedIn, user, loadMyProperties]);
 
   if (!isLoggedIn || !user) {
     return (
@@ -32,17 +67,13 @@ export default function ManagePropertiesPage() {
     );
   }
 
-  // Filter properties owned by the current authenticated user
-  const myProps = properties.filter(
-    (p) => p.ownerId === user.id || p.ownerEmail === user.email
-  );
-
   const handleDeleteConfirm = async () => {
     if (!deleteId) return;
     setDeleting(true);
     const toastId = toast.loading("Deleting listing...");
     try {
-      await deleteProperty(deleteId);
+      await deletePropertyApi(deleteId);
+      setMyProps((prev) => prev.filter((p) => p.id !== deleteId));
       toast.success("Listing deleted successfully!", { id: toastId });
     } catch (err: any) {
       toast.error(err.message || "Failed to delete listing", { id: toastId });
@@ -58,6 +89,13 @@ export default function ManagePropertiesPage() {
       currency: "USD",
       maximumFractionDigits: 0,
     }).format(n);
+
+  const approvalBadgeVariant = (status?: string) =>
+    status === "approved" ? "green" : status === "rejected" ? "red" : "amber";
+
+  const pendingApprovalCount = myProps.filter((p) => p.approvalStatus === "pending").length;
+  const approvedCount = myProps.filter((p) => p.approvalStatus === "approved").length;
+  const rejectedCount = myProps.filter((p) => p.approvalStatus === "rejected").length;
 
   return (
     <div className="min-h-screen bg-slate-50 pt-24 pb-16">
@@ -83,7 +121,7 @@ export default function ManagePropertiesPage() {
         </div>
 
         {/* Summary Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
           {[
             {
               label: "Total Listed",
@@ -125,8 +163,51 @@ export default function ManagePropertiesPage() {
           ))}
         </div>
 
-        {/* Empty state */}
-        {myProps.length === 0 ? (
+        {/* Approval Summary Cards */}
+        <div className="grid grid-cols-3 gap-4 mb-8">
+          {[
+            {
+              label: "Approval Pending",
+              value: pendingApprovalCount,
+              icon: AlertCircle,
+              color: "bg-amber-50 text-amber-600",
+            },
+            {
+              label: "Approved",
+              value: approvedCount,
+              icon: CheckCircle,
+              color: "bg-green-50 text-green-600",
+            },
+            {
+              label: "Rejected",
+              value: rejectedCount,
+              icon: XCircle,
+              color: "bg-red-50 text-red-500",
+            },
+          ].map(({ label, value, icon: Icon, color }) => (
+            <div
+              key={label}
+              className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm flex items-center gap-4 text-left"
+            >
+              <div className={`w-11 h-11 ${color} rounded-xl flex items-center justify-center shrink-0`}>
+                <Icon size={20} />
+              </div>
+              <div>
+                <p className="text-xl font-extrabold text-slate-800">{value}</p>
+                <p className="text-xs text-slate-400">{label}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Loading state */}
+        {loading ? (
+          <div className="bg-white rounded-2xl p-12 border border-gray-100 shadow-sm text-center">
+            <div className="w-8 h-8 border-4 border-blue-600/30 border-t-blue-600 rounded-full animate-spin mx-auto mb-3" />
+            <p className="text-slate-400 text-sm">Loading your listings...</p>
+          </div>
+        ) : myProps.length === 0 ? (
+          /* Empty state */
           <div className="bg-white rounded-2xl p-12 border border-gray-100 shadow-sm text-center">
             <Building2 size={48} className="text-slate-300 mx-auto mb-4" />
             <h3 className="text-lg font-bold text-slate-700 mb-1">No listings yet</h3>
@@ -147,7 +228,7 @@ export default function ManagePropertiesPage() {
               <table className="w-full border-collapse">
                 <thead className="bg-slate-50 border-b border-gray-100">
                   <tr>
-                    {["Property", "City", "Rent/mo", "Type", "Status", "Listed", "Actions"].map((h) => (
+                    {["Property", "City", "Rent/mo", "Type", "Status", "Approval", "Listed", "Actions"].map((h) => (
                       <th
                         key={h}
                         className="text-left px-5 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wide"
@@ -197,6 +278,24 @@ export default function ManagePropertiesPage() {
                         >
                           {p.status}
                         </Badge>
+                      </td>
+                      <td className="px-5 py-4">
+                        <div
+                          title={
+                            p.approvalStatus === "rejected" && p.rejectionReason
+                              ? p.rejectionReason
+                              : undefined
+                          }
+                        >
+                          <Badge variant={approvalBadgeVariant(p.approvalStatus)}>
+                            {p.approvalStatus || "pending"}
+                          </Badge>
+                          {p.approvalStatus === "rejected" && p.rejectionReason && (
+                            <p className="text-[11px] text-red-400 mt-1 max-w-[160px] line-clamp-1">
+                              {p.rejectionReason}
+                            </p>
+                          )}
+                        </div>
                       </td>
                       <td className="px-5 py-4 text-sm text-slate-400">
                         {new Date(p.createdAt).toLocaleDateString("en-US", {
@@ -254,7 +353,7 @@ export default function ManagePropertiesPage() {
                         {p.title}
                       </p>
                       <p className="text-xs text-slate-400 mt-1">{p.city}</p>
-                      <div className="flex items-center gap-2 mt-2">
+                      <div className="flex items-center flex-wrap gap-2 mt-2">
                         <span className="text-blue-600 font-bold text-sm">
                           {fmt(p.rent)}/mo
                         </span>
@@ -269,7 +368,15 @@ export default function ManagePropertiesPage() {
                         >
                           {p.status}
                         </Badge>
+                        <Badge variant={approvalBadgeVariant(p.approvalStatus)}>
+                          {p.approvalStatus || "pending"}
+                        </Badge>
                       </div>
+                      {p.approvalStatus === "rejected" && p.rejectionReason && (
+                        <p className="text-[11px] text-red-400 mt-1 line-clamp-2">
+                          {p.rejectionReason}
+                        </p>
+                      )}
                     </div>
                   </div>
                   <div className="flex border-t border-gray-100">

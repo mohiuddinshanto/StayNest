@@ -16,6 +16,7 @@ import {
   Menu,
   X,
   LogIn,
+  ShieldCheck,
 } from "lucide-react";
 import { useProperties } from "@/context/PropertyContext";
 import toast from "react-hot-toast";
@@ -23,11 +24,15 @@ import toast from "react-hot-toast";
 export function Navbar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { isLoggedIn, user, logout } = useProperties();
+  const { isLoggedIn, user, logout, becomeOwner } = useProperties();
 
   const [mobileOpen, setMobileOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+
+  const isOwnerOrAdmin = user?.role === "owner" || user?.role === "admin";
+  const isAdmin = user?.role === "admin";
+  const isPlainUser = user?.role === "user";
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 30);
@@ -58,6 +63,16 @@ export function Navbar() {
       router.push("/");
     } catch (err: any) {
       toast.error("Failed to sign out", { id: toastId });
+    }
+  };
+
+  const handleBecomeOwner = async () => {
+    const toastId = toast.loading("Upgrading your account...");
+    try {
+      await becomeOwner();
+      toast.success("You're now an owner!", { id: toastId });
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to become an owner", { id: toastId });
     }
   };
 
@@ -117,23 +132,48 @@ export function Navbar() {
           <div className="hidden md:flex items-center gap-2">
             {isLoggedIn && user ? (
               <>
-                <Link
-                  href="/add-property"
-                  className="flex items-center gap-1.5 px-4 py-2 bg-teal-500 hover:bg-teal-600 text-white text-sm font-semibold rounded-xl transition-colors"
-                >
-                  <Plus size={15} />
-                  Add Property
-                </Link>
-                <Link
-                  href="/manage"
-                  className={`px-3 py-2 rounded-xl text-sm font-medium transition-colors ${
-                    isTransparent
-                      ? "text-white/90 hover:bg-white/10"
-                      : "text-slate-600 hover:bg-slate-50"
-                  }`}
-                >
-                  <Settings size={16} />
-                </Link>
+                {isOwnerOrAdmin && (
+                  <>
+                    <Link
+                      href="/add-property"
+                      className="flex items-center gap-1.5 px-4 py-2 bg-teal-500 hover:bg-teal-600 text-white text-sm font-semibold rounded-xl transition-colors"
+                    >
+                      <Plus size={15} />
+                      Add Property
+                    </Link>
+                    <Link
+                      href="/manage"
+                      className={`px-3 py-2 rounded-xl text-sm font-medium transition-colors ${
+                        isTransparent
+                          ? "text-white/90 hover:bg-white/10"
+                          : "text-slate-600 hover:bg-slate-50"
+                      }`}
+                    >
+                      <Settings size={16} />
+                    </Link>
+                  </>
+                )}
+                {isPlainUser && (
+                  <button
+                    onClick={handleBecomeOwner}
+                    className="flex items-center gap-1.5 px-4 py-2 bg-teal-500 hover:bg-teal-600 text-white text-sm font-semibold rounded-xl transition-colors"
+                  >
+                    <Plus size={15} />
+                    Become an Owner
+                  </button>
+                )}
+                {isAdmin && (
+                  <Link
+                    href="/admin"
+                    className={`px-3 py-2 rounded-xl text-sm font-medium transition-colors ${
+                      isTransparent
+                        ? "text-white/90 hover:bg-white/10"
+                        : "text-slate-600 hover:bg-slate-50"
+                    }`}
+                  >
+                    <ShieldCheck size={16} />
+                  </Link>
+                )}
                 <Link
                   href="/dashboard"
                   className={`px-3 py-2 rounded-xl text-sm font-medium transition-colors ${
@@ -175,20 +215,42 @@ export function Navbar() {
                         <LayoutDashboard size={15} />
                         Dashboard
                       </Link>
-                      <Link
-                        href="/manage"
-                        className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50"
-                      >
-                        <Settings size={15} />
-                        Manage Properties
-                      </Link>
-                      <Link
-                        href="/add-property"
-                        className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50"
-                      >
-                        <Plus size={15} />
-                        Add Property
-                      </Link>
+                      {isOwnerOrAdmin && (
+                        <>
+                          <Link
+                            href="/manage"
+                            className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50"
+                          >
+                            <Settings size={15} />
+                            Manage Properties
+                          </Link>
+                          <Link
+                            href="/add-property"
+                            className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50"
+                          >
+                            <Plus size={15} />
+                            Add Property
+                          </Link>
+                        </>
+                      )}
+                      {isPlainUser && (
+                        <button
+                          onClick={handleBecomeOwner}
+                          className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50"
+                        >
+                          <Plus size={15} />
+                          Become an Owner
+                        </button>
+                      )}
+                      {isAdmin && (
+                        <Link
+                          href="/admin"
+                          className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50"
+                        >
+                          <ShieldCheck size={15} />
+                          Admin Panel
+                        </Link>
+                      )}
                       <div className="my-1 border-t border-gray-100" />
                       <button
                         onClick={handleLogoutClick}
@@ -261,26 +323,48 @@ export function Navbar() {
           <div className="pt-2 border-t border-gray-100 mt-2 space-y-1">
             {isLoggedIn && user ? (
               <>
-                <Link
-                  href="/add-property"
-                  className="flex items-center gap-2 w-full px-4 py-3 rounded-xl text-sm font-medium bg-teal-500 text-white"
-                >
-                  <Plus size={16} />
-                  Add Property
-                </Link>
+                {isOwnerOrAdmin && (
+                  <>
+                    <Link
+                      href="/add-property"
+                      className="flex items-center gap-2 w-full px-4 py-3 rounded-xl text-sm font-medium bg-teal-500 text-white"
+                    >
+                      <Plus size={16} />
+                      Add Property
+                    </Link>
+                    <Link
+                      href="/manage"
+                      className="flex items-center gap-2 w-full px-4 py-3 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50"
+                    >
+                      <Settings size={16} />
+                      Manage Properties
+                    </Link>
+                  </>
+                )}
+                {isPlainUser && (
+                  <button
+                    onClick={handleBecomeOwner}
+                    className="flex items-center gap-2 w-full px-4 py-3 rounded-xl text-sm font-medium bg-teal-500 text-white"
+                  >
+                    <Plus size={16} />
+                    Become an Owner
+                  </button>
+                )}
+                {isAdmin && (
+                  <Link
+                    href="/admin"
+                    className="flex items-center gap-2 w-full px-4 py-3 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50"
+                  >
+                    <ShieldCheck size={16} />
+                    Admin Panel
+                  </Link>
+                )}
                 <Link
                   href="/dashboard"
                   className="flex items-center gap-2 w-full px-4 py-3 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50"
                 >
                   <LayoutDashboard size={16} />
                   Dashboard
-                </Link>
-                <Link
-                  href="/manage"
-                  className="flex items-center gap-2 w-full px-4 py-3 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50"
-                >
-                  <Settings size={16} />
-                  Manage Properties
                 </Link>
                 <button
                   onClick={handleLogoutClick}

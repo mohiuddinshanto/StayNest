@@ -1,30 +1,43 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getSessionCookie } from "better-auth/cookies";
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 
-const protectedRoutes = ["/dashboard", "/add-property", "/manage"];
+// প্রোটেক্টেড রুটগুলোর তালিকা
+const protectedRoutes = [
+  "/dashboard",
+  "/manage",
+  "/add-property",
+  "/admin" // নতুন অ্যাডমিন রুট যুক্ত করা হয়েছে
+];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  const isProtected = protectedRoutes.some(
-    (route) => pathname === route || pathname.startsWith(`${route}/`)
+  // চেক করুন রুটটি প্রোটেক্টেড কি না
+  const isProtectedRoute = protectedRoutes.some((route) =>
+    pathname.startsWith(route)
   );
 
-  if (!isProtected) {
-    return NextResponse.next();
-  }
+  if (isProtectedRoute) {
+    // অুথ সেশন যাচাই করার লজিক (Better Auth বা অন্য Auth Client)
+    const sessionToken = request.cookies.get("better-auth.session_token");
 
-  const sessionCookie = getSessionCookie(request);
-
-  if (!sessionCookie) {
-    const loginUrl = new URL("/auth", request.url);
-    loginUrl.searchParams.set("redirect", pathname);
-    return NextResponse.redirect(loginUrl);
+    if (!sessionToken) {
+      // সেশন না থাকলে অথ পেজে রিডাইরেক্ট করুন
+      const loginUrl = new URL("/auth", request.url);
+      loginUrl.searchParams.set("redirect", pathname);
+      return NextResponse.redirect(loginUrl);
+    }
   }
 
   return NextResponse.next();
 }
 
+// Matcher কনফিগারেশনে রুটগুলো যুক্ত করা হয়েছে
 export const config = {
-  matcher: ["/dashboard/:path*", "/add-property/:path*", "/manage/:path*"],
+  matcher: [
+    "/dashboard/:path*",
+    "/manage/:path*",
+    "/add-property/:path*",
+    "/admin/:path*" // অ্যাডমিন রুটটি এখানে যুক্ত
+  ],
 };

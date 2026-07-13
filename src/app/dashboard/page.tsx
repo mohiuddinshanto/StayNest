@@ -4,11 +4,13 @@ import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   Building2,
-  Eye,
   Star,
   TrendingUp,
   DollarSign,
   Plus,
+  Clock,
+  MessageSquare,
+  Mail,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -24,6 +26,12 @@ import {
 } from "recharts";
 import { useProperties } from "@/context/PropertyContext";
 import { Badge } from "@/components/Badge";
+import {
+  fetchOwnerAnalytics,
+  fetchReceivedInquiries,
+  markInquiryAsRead,
+} from "@/lib/api";
+import type { OwnerAnalytics, Inquiry } from "@/types";
 
 const CHART_MONTHLY = [
   { month: "Jan", revenue: 42000, bookings: 2.8 },
@@ -47,6 +55,12 @@ export default function DashboardPage() {
   const { isLoggedIn, user, properties } = useProperties();
   const [mounted, setMounted] = useState(false);
 
+  const [analytics, setAnalytics] = useState<OwnerAnalytics | null>(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(true);
+
+  const [inquiries, setInquiries] = useState<Inquiry[]>([]);
+  const [inquiriesLoading, setInquiriesLoading] = useState(true);
+
   useEffect(() => {
     setMounted(true);
   }, []);
@@ -57,6 +71,73 @@ export default function DashboardPage() {
       router.push("/auth");
     }
   }, [isLoggedIn, router]);
+
+  // Fetch owner analytics
+  useEffect(() => {
+    if (!isLoggedIn || !user) return;
+
+    let cancelled = false;
+    setAnalyticsLoading(true);
+
+    fetchOwnerAnalytics()
+      .then((data) => {
+        if (!cancelled) setAnalytics(data);
+      })
+      .catch((err) => {
+        console.error("Failed to load owner analytics:", err);
+        if (!cancelled) setAnalytics(null);
+      })
+      .finally(() => {
+        if (!cancelled) setAnalyticsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoggedIn, user]);
+
+  // Fetch received inquiries (property requests)
+  useEffect(() => {
+    if (!isLoggedIn || !user) return;
+
+    let cancelled = false;
+    setInquiriesLoading(true);
+
+    fetchReceivedInquiries()
+      .then((res) => {
+        if (!cancelled) setInquiries(res.data);
+      })
+      .catch((err) => {
+        console.error("Failed to load inquiries:", err);
+        if (!cancelled) setInquiries([]);
+      })
+      .finally(() => {
+        if (!cancelled) setInquiriesLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoggedIn, user]);
+
+  const handleInquiryClick = async (inquiry: Inquiry) => {
+    if (inquiry.status !== "unread") return;
+
+    // Optimistically mark as read
+    setInquiries((prev) =>
+      prev.map((i) => (i.id === inquiry.id ? { ...i, status: "read" } : i))
+    );
+
+    try {
+      await markInquiryAsRead(inquiry.id);
+    } catch (err) {
+      console.error("Failed to mark inquiry as read:", err);
+      // Revert on failure
+      setInquiries((prev) =>
+        prev.map((i) => (i.id === inquiry.id ? { ...i, status: "unread" } : i))
+      );
+    }
+  };
 
   if (!isLoggedIn || !user) {
     return (
@@ -74,7 +155,15 @@ export default function DashboardPage() {
     (p) => p.ownerId === user.id || p.ownerEmail === user.email
   );
 
-  const totalRevenue = myProps.reduce((s, p) => s + p.rent, 0);
+  const fallbackRevenue = myProps.reduce((s, p) => s + p.rent, 0);
+  const fallbackReviews = myProps.reduce((s, p) => s + p.reviewCount, 0);
+
+  // Prefer live analytics from the backend, fall back to locally derived values
+  const totalRevenue = analytics?.totalRevenue ?? fallbackRevenue;
+  const totalReviews = analytics?.totalReviews ?? fallbackReviews;
+  const pendingApproval = analytics?.pendingCount ?? 0;
+  const totalInquiries = analytics?.totalInquiries ?? inquiries.length;
+  const unreadInquiries = inquiries.filter((i) => i.status === "unread").length;
 
   // Dynamic portfolio split based on owned properties
   const typeCounts: Record<string, number> = {};
@@ -107,18 +196,19 @@ export default function DashboardPage() {
     };
   });
 
-  const totalViews = myProps.length > 0 ? myProps.length * 154 : 0;
-  const avgRating = myProps.length > 0
-    ? (myProps.reduce((s, p) => s + p.rating, 0) / myProps.length).toFixed(1)
-    : "0.0";
-  const totalReviews = myProps.reduce((s, p) => s + p.reviewCount, 0);
-
   const fmt = (n: number) =>
     new Intl.NumberFormat("en-US", {
       style: "currency",
       currency: "USD",
       maximumFractionDigits: 0,
     }).format(n);
+
+  const fmtDate = (d: string) =>
+    new Date(d).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
 
   return (
     <div className="min-h-screen bg-slate-50 pt-24 pb-16">
@@ -148,36 +238,36 @@ export default function DashboardPage() {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 mb-8 text-left">
           {[
             {
-              label: "Monthly Rent Value",
-              value: fmt(totalRevenue),
+              label: "Total Revenue",
+              value: analyticsLoading ? "…" : fmt(totalRevenue),
               change: myProps.length > 0 ? "+12.4% vs last month" : "No listings active",
               icon: DollarSign,
               color: "bg-blue-600",
               trend: myProps.length > 0,
             },
             {
-              label: "Active Listings",
-              value: String(myProps.filter((p) => p.status === "available").length),
-              change: `${myProps.length} total listed`,
-              icon: Building2,
-              color: "bg-teal-500",
-              trend: myProps.length > 0,
-            },
-            {
-              label: "Estimated Views",
-              value: totalViews.toLocaleString(),
-              change: myProps.length > 0 ? "+18% vs last month" : "No views",
-              icon: Eye,
-              color: "bg-amber-500",
-              trend: myProps.length > 0,
-            },
-            {
-              label: "Avg. Rating",
-              value: avgRating,
-              change: `From ${totalReviews} reviews`,
+              label: "Total Reviews",
+              value: analyticsLoading ? "…" : String(totalReviews),
+              change: `Across ${myProps.length} listing${myProps.length === 1 ? "" : "s"}`,
               icon: Star,
               color: "bg-purple-500",
               trend: false,
+            },
+            {
+              label: "Pending Approval",
+              value: analyticsLoading ? "…" : String(pendingApproval),
+              change: pendingApproval > 0 ? "Awaiting review" : "All caught up",
+              icon: Clock,
+              color: "bg-amber-500",
+              trend: false,
+            },
+            {
+              label: "Total Inquiries",
+              value: analyticsLoading ? "…" : String(totalInquiries),
+              change: `${unreadInquiries} unread`,
+              icon: MessageSquare,
+              color: "bg-teal-500",
+              trend: unreadInquiries > 0,
             },
           ].map(({ label, value, change, icon: Icon, color, trend }) => (
             <div
@@ -311,7 +401,7 @@ export default function DashboardPage() {
             </div>
 
             {/* Recent Properties */}
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 text-left">
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 text-left mb-8">
               <div className="flex items-center justify-between mb-5">
                 <h3 className="font-bold text-slate-800">Recent Properties</h3>
                 <button
@@ -361,6 +451,72 @@ export default function DashboardPage() {
             </div>
           </>
         )}
+
+        {/* Property Requests */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 text-left">
+          <div className="flex items-center justify-between mb-5">
+            <h3 className="font-bold text-slate-800">Property Requests</h3>
+            {unreadInquiries > 0 && (
+              <span className="text-xs font-semibold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full">
+                {unreadInquiries} unread
+              </span>
+            )}
+          </div>
+
+          {inquiriesLoading ? (
+            <div className="space-y-3">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="h-16 w-full bg-slate-50 animate-pulse rounded-xl" />
+              ))}
+            </div>
+          ) : inquiries.length === 0 ? (
+            <div className="text-center py-12">
+              <Mail size={40} className="text-slate-200 mx-auto mb-3" />
+              <p className="text-slate-400 text-sm">No requests yet</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {inquiries.map((inquiry) => (
+                <div
+                  key={inquiry.id}
+                  onClick={() => handleInquiryClick(inquiry)}
+                  className={`p-4 rounded-xl border transition-colors cursor-pointer ${
+                    inquiry.status === "unread"
+                      ? "border-blue-100 bg-blue-50/40 hover:bg-blue-50"
+                      : "border-gray-100 hover:bg-slate-50"
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3 mb-1.5">
+                    <div className="flex items-center gap-2 min-w-0">
+                      {inquiry.status === "unread" && (
+                        <span className="w-2 h-2 rounded-full bg-blue-600 shrink-0" />
+                      )}
+                      <p className="font-semibold text-slate-800 text-sm truncate">
+                        {inquiry.propertyTitle}
+                      </p>
+                    </div>
+                    <Badge variant={inquiry.type === "schedule_viewing" ? "amber" : "green"}>
+                      {inquiry.type === "schedule_viewing" ? "Viewing Request" : "Message"}
+                    </Badge>
+                  </div>
+
+                  <p className="text-xs text-slate-500 mb-2">
+                    {inquiry.senderName}
+                    {inquiry.senderEmail ? ` · ${inquiry.senderEmail}` : ""}
+                  </p>
+
+                  <p className="text-sm text-slate-600 line-clamp-2">{inquiry.message}</p>
+
+                  {inquiry.preferredDate && (
+                    <p className="text-xs text-slate-400 mt-2">
+                      Preferred date: {fmtDate(inquiry.preferredDate)}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

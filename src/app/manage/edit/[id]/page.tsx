@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, use } from "react";
 import { useRouter } from "next/navigation";
-import { Check, CheckCircle, Save, ArrowLeft } from "lucide-react";
+import { Check, CheckCircle, Save, ArrowLeft, Plus, X } from "lucide-react";
 import { useProperties } from "@/context/PropertyContext";
 import { fetchPropertyById, updateProperty } from "@/lib/api";
 import type { Property } from "@/types";
@@ -31,7 +31,7 @@ export default function EditPropertyPage({ params }: PageProps) {
     area: "",
     city: "",
     address: "",
-    imageUrl: "",
+    images: [""] as string[],
     available: "",
     amenities: [] as string[],
     status: "available" as "available" | "rented" | "pending",
@@ -89,7 +89,7 @@ export default function EditPropertyPage({ params }: PageProps) {
           area: String(data.area),
           city: data.city,
           address: data.address,
-          imageUrl: data.images[0] || "",
+          images: data.images && data.images.length ? data.images : [""],
           available: data.available,
           amenities: data.amenities || [],
           status: data.status || "available",
@@ -121,6 +121,25 @@ export default function EditPropertyPage({ params }: PageProps) {
 
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
 
+  const setImage = (index: number, value: string) => {
+    setForm((f) => {
+      const images = [...f.images];
+      images[index] = value;
+      return { ...f, images };
+    });
+  };
+
+  const addImageField = () => {
+    setForm((f) => ({ ...f, images: [...f.images, ""] }));
+  };
+
+  const removeImageField = (index: number) => {
+    setForm((f) => ({
+      ...f,
+      images: f.images.length > 1 ? f.images.filter((_, i) => i !== index) : f.images,
+    }));
+  };
+
   const validate = () => {
     const e: Record<string, string> = {};
     if (!form.title.trim()) e.title = "Title is required";
@@ -132,6 +151,9 @@ export default function EditPropertyPage({ params }: PageProps) {
     if (!form.city.trim()) e.city = "City is required";
     if (!form.address.trim()) e.address = "Address is required";
     if (!form.available) e.available = "Available date is required";
+    if (!form.images.some((img) => img.trim())) {
+      e.images = "At least one image URL is required";
+    }
     return e;
   };
 
@@ -158,10 +180,7 @@ export default function EditPropertyPage({ params }: PageProps) {
         area: Number(form.area),
         city: form.city,
         address: form.address,
-        images: [
-          form.imageUrl ||
-            "https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=900&h=560&fit=crop",
-        ],
+        images: form.images.map((img) => img.trim()).filter(Boolean),
         amenities: form.amenities,
         available: form.available,
         status: form.status,
@@ -443,26 +462,56 @@ export default function EditPropertyPage({ params }: PageProps) {
             <h2 className="text-lg font-bold text-slate-800 mb-4 pb-3 border-b border-gray-100">
               Photos
             </h2>
-            <Field label="Primary Image URL">
-              <input
-                value={form.imageUrl}
-                onChange={(e) => set("imageUrl", e.target.value)}
-                placeholder="https://images.unsplash.com/…"
-                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20 h-11"
-              />
-            </Field>
-            {form.imageUrl && (
-              <div className="mt-3 rounded-xl overflow-hidden h-40 bg-slate-100">
-                <img
-                  src={form.imageUrl}
-                  alt="Preview"
-                  className="w-full h-full object-cover"
-                  onError={(e) => {
-                    e.currentTarget.style.display = "none";
-                  }}
-                />
+            <Field label="Image URLs *" error={errors.images}>
+              <div className="space-y-3">
+                {form.images.map((img, index) => (
+                  <div key={index}>
+                    <div className="flex items-center gap-2">
+                      <input
+                        value={img}
+                        onChange={(e) => setImage(index, e.target.value)}
+                        placeholder="https://images.unsplash.com/…"
+                        className={`w-full border rounded-xl px-4 py-3 text-sm outline-none h-11 ${
+                          errors.images
+                            ? "border-red-400 bg-red-50"
+                            : "border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20"
+                        }`}
+                      />
+                      {form.images.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removeImageField(index)}
+                          className="shrink-0 w-11 h-11 flex items-center justify-center rounded-xl border border-gray-200 text-slate-400 hover:text-red-500 hover:border-red-300 bg-white cursor-pointer transition-colors"
+                          aria-label="Remove image"
+                        >
+                          <X size={18} />
+                        </button>
+                      )}
+                    </div>
+                    {img && (
+                      <div className="mt-2 rounded-xl overflow-hidden h-40 bg-slate-100">
+                        <img
+                          src={img}
+                          alt={`Preview ${index + 1}`}
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            e.currentTarget.style.display = "none";
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
-            )}
+            </Field>
+            <button
+              type="button"
+              onClick={addImageField}
+              className="mt-3 text-sm font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1 cursor-pointer"
+            >
+              <Plus size={16} />
+              Add Another Image
+            </button>
           </div>
 
           {/* Amenities */}

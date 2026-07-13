@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState, useEffect, use } from "react";
+import React, { useState, useEffect, useCallback, use } from "react";
 import { useRouter } from "next/navigation";
+import useEmblaCarousel from "embla-carousel-react";
 import {
   MapPin,
   ChevronRight,
@@ -26,6 +27,8 @@ import {
   Bell,
   Check,
   Star,
+  Pencil,
+  Calendar,
 } from "lucide-react";
 
 import { useProperties } from "@/context/PropertyContext";
@@ -33,12 +36,125 @@ import { PropertyCard } from "@/components/PropertyCard";
 import { Stars } from "@/components/Stars";
 import { Badge } from "@/components/Badge";
 import { Modal } from "@/components/Modal";
-import { fetchPropertyById, createReview, fetchProperties } from "@/lib/api";
+import { LoginPromptModal } from "@/components/LoginPromptModal";
+import { fetchPropertyById, createReview, createInquiry, fetchProperties } from "@/lib/api";
 import type { Property } from "@/types";
 import toast from "react-hot-toast";
 
 interface PageProps {
   params: Promise<{ id: string }>;
+}
+
+function PropertyGallery({
+  images,
+  title,
+}: {
+  images: string[];
+  title: string;
+}) {
+  const hasMultiple = images.length > 1;
+  const [emblaRef, emblaApi] = useEmblaCarousel({ loop: hasMultiple });
+  const [selectedIndex, setSelectedIndex] = useState(0);
+
+  const scrollPrev = useCallback(() => emblaApi?.scrollPrev(), [emblaApi]);
+  const scrollNext = useCallback(() => emblaApi?.scrollNext(), [emblaApi]);
+  const scrollTo = useCallback(
+    (index: number) => emblaApi?.scrollTo(index),
+    [emblaApi]
+  );
+
+  const onSelect = useCallback(() => {
+    if (!emblaApi) return;
+    setSelectedIndex(emblaApi.selectedScrollSnap());
+  }, [emblaApi]);
+
+  useEffect(() => {
+    if (!emblaApi) return;
+    onSelect();
+    emblaApi.on("select", onSelect);
+    emblaApi.on("reInit", onSelect);
+    return () => {
+      emblaApi.off("select", onSelect);
+      emblaApi.off("reInit", onSelect);
+    };
+  }, [emblaApi, onSelect]);
+
+  return (
+    <div className="space-y-3">
+      <div className="relative rounded-2xl overflow-hidden bg-slate-100">
+        <div className="overflow-hidden" ref={emblaRef}>
+          <div className="flex">
+            {images.map((img, i) => (
+              <div key={i} className="relative flex-[0_0_100%] min-w-0">
+                <img
+                  src={img}
+                  alt={`${title} - photo ${i + 1}`}
+                  className="w-full h-96 md:h-[480px] object-cover"
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="absolute inset-0 bg-gradient-to-t from-black/10 to-transparent pointer-events-none" />
+
+        {hasMultiple && (
+          <>
+            <button
+              onClick={scrollPrev}
+              aria-label="Previous image"
+              className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/90 rounded-full flex items-center justify-center shadow hover:bg-white transition-colors border-none cursor-pointer"
+            >
+              <ChevronLeft size={18} />
+            </button>
+            <button
+              onClick={scrollNext}
+              aria-label="Next image"
+              className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/90 rounded-full flex items-center justify-center shadow hover:bg-white transition-colors border-none cursor-pointer"
+            >
+              <ChevronRight size={18} />
+            </button>
+
+            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5">
+              {images.map((_, i) => (
+                <button
+                  key={i}
+                  onClick={() => scrollTo(i)}
+                  aria-label={`Go to image ${i + 1}`}
+                  className={`h-1.5 rounded-full transition-all border-none cursor-pointer p-0 ${
+                    i === selectedIndex
+                      ? "w-5 bg-white"
+                      : "w-1.5 bg-white/60 hover:bg-white/80"
+                  }`}
+                />
+              ))}
+            </div>
+
+            <div className="absolute bottom-3 right-3 bg-black/50 text-white text-xs px-3 py-1 rounded-full backdrop-blur-sm">
+              {selectedIndex + 1} / {images.length}
+            </div>
+          </>
+        )}
+      </div>
+
+      {hasMultiple && (
+        <div className="flex gap-3 overflow-x-auto pb-1">
+          {images.map((img, i) => (
+            <button
+              key={i}
+              onClick={() => scrollTo(i)}
+              className={`w-20 h-16 rounded-xl overflow-hidden shrink-0 transition-all border-none cursor-pointer p-0 ${
+                i === selectedIndex
+                  ? "ring-2 ring-blue-600 ring-offset-2"
+                  : "opacity-60 hover:opacity-90"
+              }`}
+            >
+              <img src={img} alt="" className="w-full h-full object-cover" />
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function PropertyDetailsPage({ params }: PageProps) {
@@ -50,10 +166,22 @@ export default function PropertyDetailsPage({ params }: PageProps) {
   const [loading, setLoading] = useState(true);
   const [related, setRelated] = useState<Property[]>([]);
 
-  const [galleryIdx, setGalleryIdx] = useState(0);
+  // Contact (Message Owner) modal state
   const [contactOpen, setContactOpen] = useState(false);
   const [contactMsg, setContactMsg] = useState("");
   const [msgSent, setMsgSent] = useState(false);
+  const [sendingMsg, setSendingMsg] = useState(false);
+
+  // Schedule Viewing modal state
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [scheduleMsg, setScheduleMsg] = useState("");
+  const [scheduleDate, setScheduleDate] = useState("");
+  const [scheduleSent, setScheduleSent] = useState(false);
+  const [sendingSchedule, setSendingSchedule] = useState(false);
+
+  // Login prompt modal state
+  const [loginPromptOpen, setLoginPromptOpen] = useState(false);
+  const [loginPromptAction, setLoginPromptAction] = useState("perform this action");
 
   // Review states
   const [userRating, setUserRating] = useState(5);
@@ -79,7 +207,6 @@ export default function PropertyDetailsPage({ params }: PageProps) {
       setLoading(true);
       const data = await fetchPropertyById(id);
       setProperty(data);
-      setGalleryIdx(0);
 
       // Load related properties in same city
       const relatedRes = await fetchProperties({ city: data.city, limit: 4 });
@@ -96,11 +223,83 @@ export default function PropertyDetailsPage({ params }: PageProps) {
     loadProperty();
   }, [id]);
 
+  const isOwnProperty =
+    !!user &&
+    !!property &&
+    (user.id === property.ownerId || user.email === property.ownerEmail);
+
+  const openLoginPrompt = (action: string) => {
+    setLoginPromptAction(action);
+    setLoginPromptOpen(true);
+  };
+
+  const handleContactOwnerClick = () => {
+    if (!isLoggedIn) {
+      openLoginPrompt("message the owner");
+      return;
+    }
+    setContactOpen(true);
+  };
+
+  const handleScheduleViewingClick = () => {
+    if (!isLoggedIn) {
+      openLoginPrompt("schedule a viewing");
+      return;
+    }
+    setScheduleOpen(true);
+  };
+
+  const handleSendMessage = async () => {
+    if (!contactMsg.trim()) {
+      toast.error("Please enter a message");
+      return;
+    }
+    setSendingMsg(true);
+    try {
+      await createInquiry({
+        propertyId: id,
+        type: "message",
+        message: contactMsg,
+      });
+      setMsgSent(true);
+      toast.success("Message sent to owner!");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to send message");
+    } finally {
+      setSendingMsg(false);
+    }
+  };
+
+  const handleScheduleSubmit = async () => {
+    if (!scheduleMsg.trim()) {
+      toast.error("Please enter a message");
+      return;
+    }
+    if (!scheduleDate) {
+      toast.error("Please select a preferred date");
+      return;
+    }
+    setSendingSchedule(true);
+    try {
+      await createInquiry({
+        propertyId: id,
+        type: "schedule_viewing",
+        message: scheduleMsg,
+        preferredDate: scheduleDate,
+      });
+      setScheduleSent(true);
+      toast.success("Viewing request sent!");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to schedule viewing");
+    } finally {
+      setSendingSchedule(false);
+    }
+  };
+
   const handleReviewSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isLoggedIn) {
-      toast.error("You must be logged in to submit a review");
-      router.push(`/auth?redirect=/property/${id}`);
+      openLoginPrompt("leave a review");
       return;
     }
     if (!userComment.trim()) {
@@ -195,58 +394,7 @@ export default function PropertyDetailsPage({ params }: PageProps) {
           {/* Left: Main Content */}
           <div className="lg:col-span-2 space-y-8">
             {/* Gallery */}
-            <div className="space-y-3">
-              <div className="relative rounded-2xl overflow-hidden bg-slate-100">
-                <img
-                  src={property.images[galleryIdx]}
-                  alt={property.title}
-                  className="w-full h-96 md:h-[480px] object-cover"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/10 to-transparent" />
-                {property.images.length > 1 && (
-                  <>
-                    <button
-                      onClick={() =>
-                        setGalleryIdx(
-                          (i) =>
-                            (i - 1 + property.images.length) %
-                            property.images.length
-                        )
-                      }
-                      className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/90 rounded-full flex items-center justify-center shadow hover:bg-white transition-colors border-none cursor-pointer"
-                    >
-                      <ChevronLeft size={18} />
-                    </button>
-                    <button
-                      onClick={() =>
-                        setGalleryIdx((i) => (i + 1) % property.images.length)
-                      }
-                      className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/90 rounded-full flex items-center justify-center shadow hover:bg-white transition-colors border-none cursor-pointer"
-                    >
-                      <ChevronRight size={18} />
-                    </button>
-                  </>
-                )}
-                <div className="absolute bottom-3 right-3 bg-black/50 text-white text-xs px-3 py-1 rounded-full backdrop-blur-sm">
-                  {galleryIdx + 1} / {property.images.length}
-                </div>
-              </div>
-              <div className="flex gap-3 overflow-x-auto pb-1">
-                {property.images.map((img, i) => (
-                  <button
-                    key={i}
-                    onClick={() => setGalleryIdx(i)}
-                    className={`w-20 h-16 rounded-xl overflow-hidden shrink-0 transition-all border-none cursor-pointer p-0 ${
-                      i === galleryIdx
-                        ? "ring-2 ring-blue-600 ring-offset-2"
-                        : "opacity-60 hover:opacity-90"
-                    }`}
-                  >
-                    <img src={img} alt="" className="w-full h-full object-cover" />
-                  </button>
-                ))}
-              </div>
-            </div>
+            <PropertyGallery images={property.images} title={property.title} />
 
             {/* Title + Badges */}
             <div>
@@ -267,6 +415,7 @@ export default function PropertyDetailsPage({ params }: PageProps) {
                   {property.status.charAt(0).toUpperCase() +
                     property.status.slice(1)}
                 </Badge>
+                {isOwnProperty && <Badge variant="blue">Your Property</Badge>}
               </div>
               <h1
                 className="text-3xl md:text-4xl font-extrabold text-slate-800 mb-3"
@@ -383,10 +532,10 @@ export default function PropertyDetailsPage({ params }: PageProps) {
                 </div>
               </div>
 
-              {/* Submit Review Form */}
-              <div className="bg-slate-50 border border-gray-100 rounded-2xl p-6 mb-8 text-left">
-                <h3 className="text-lg font-bold text-slate-800 mb-4">Write a Review</h3>
-                {isLoggedIn ? (
+              {/* Submit Review Form - hidden for the property owner */}
+              {!isOwnProperty && (
+                <div className="bg-slate-50 border border-gray-100 rounded-2xl p-6 mb-8 text-left">
+                  <h3 className="text-lg font-bold text-slate-800 mb-4">Write a Review</h3>
                   <form onSubmit={handleReviewSubmit} className="space-y-4">
                     <div>
                       <label className="text-sm font-semibold text-slate-600 mb-1.5 block">
@@ -434,19 +583,8 @@ export default function PropertyDetailsPage({ params }: PageProps) {
                       {submittingReview ? "Posting..." : "Post Review"}
                     </button>
                   </form>
-                ) : (
-                  <p className="text-slate-500 text-sm">
-                    Please{" "}
-                    <button
-                      onClick={() => router.push(`/auth?redirect=/property/${id}`)}
-                      className="text-blue-600 font-bold hover:underline bg-transparent border-none p-0 cursor-pointer"
-                    >
-                      Sign In
-                    </button>{" "}
-                    to leave a guest review.
-                  </p>
-                )}
-              </div>
+                </div>
+              )}
 
               {/* Reviews List */}
               <div className="space-y-5">
@@ -529,18 +667,31 @@ export default function PropertyDetailsPage({ params }: PageProps) {
                   </span>
                 </div>
               </div>
-              <button
-                onClick={() => setContactOpen(true)}
-                className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition-colors mb-3 border-none cursor-pointer"
-              >
-                Contact Owner
-              </button>
-              <button
-                onClick={() => toast.success("Viewing scheduled successfully!")}
-                className="w-full py-3 border-2 border-blue-600 text-blue-600 hover:bg-blue-50 bg-transparent font-semibold rounded-xl transition-colors text-sm cursor-pointer"
-              >
-                Schedule a Viewing
-              </button>
+
+              {isOwnProperty ? (
+                <button
+                  onClick={() => router.push(`/manage/edit/${id}`)}
+                  className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-2 border-none cursor-pointer"
+                >
+                  <Pencil size={16} />
+                  Edit Property
+                </button>
+              ) : (
+                <>
+                  <button
+                    onClick={handleContactOwnerClick}
+                    className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition-colors mb-3 border-none cursor-pointer"
+                  >
+                    Contact Owner
+                  </button>
+                  <button
+                    onClick={handleScheduleViewingClick}
+                    className="w-full py-3 border-2 border-blue-600 text-blue-600 hover:bg-blue-50 bg-transparent font-semibold rounded-xl transition-colors text-sm cursor-pointer"
+                  >
+                    Schedule a Viewing
+                  </button>
+                </>
+              )}
             </div>
 
             {/* Owner Card */}
@@ -620,7 +771,7 @@ export default function PropertyDetailsPage({ params }: PageProps) {
         )}
       </div>
 
-      {/* Contact Modal */}
+      {/* Contact / Message Owner Modal */}
       <Modal
         open={contactOpen}
         onClose={() => {
@@ -628,7 +779,7 @@ export default function PropertyDetailsPage({ params }: PageProps) {
           setMsgSent(false);
           setContactMsg("");
         }}
-        title="Contact Owner"
+        title="Message Owner"
       >
         {msgSent ? (
           <div className="p-8 text-center">
@@ -645,6 +796,7 @@ export default function PropertyDetailsPage({ params }: PageProps) {
               onClick={() => {
                 setContactOpen(false);
                 setMsgSent(false);
+                setContactMsg("");
               }}
               className="mt-5 px-6 py-2.5 bg-blue-600 text-white rounded-xl font-semibold text-sm border-none cursor-pointer"
             >
@@ -670,25 +822,6 @@ export default function PropertyDetailsPage({ params }: PageProps) {
             </div>
             <div>
               <label className="text-sm font-semibold text-slate-600 mb-1.5 block">
-                Your Name
-              </label>
-              <input
-                placeholder="Enter your full name"
-                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 h-11"
-              />
-            </div>
-            <div>
-              <label className="text-sm font-semibold text-slate-600 mb-1.5 block">
-                Your Email
-              </label>
-              <input
-                placeholder="your@email.com"
-                type="email"
-                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 h-11"
-              />
-            </div>
-            <div>
-              <label className="text-sm font-semibold text-slate-600 mb-1.5 block">
                 Message
               </label>
               <textarea
@@ -696,22 +829,123 @@ export default function PropertyDetailsPage({ params }: PageProps) {
                 value={contactMsg}
                 onChange={(e) => setContactMsg(e.target.value)}
                 placeholder={`Hi ${property.ownerName}, I'm interested in renting ${property.title}...`}
+                disabled={sendingMsg}
                 className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 resize-none"
               />
             </div>
             <button
-              onClick={() => {
-                setMsgSent(true);
-                toast.success("Message sent to owner!");
-              }}
-              className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-2 border-none cursor-pointer"
+              onClick={handleSendMessage}
+              disabled={sendingMsg}
+              className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-2 border-none cursor-pointer disabled:opacity-60"
             >
               <Send size={16} />
-              Send Message
+              {sendingMsg ? "Sending..." : "Send Message"}
             </button>
           </div>
         )}
       </Modal>
+
+      {/* Schedule Viewing Modal */}
+      <Modal
+        open={scheduleOpen}
+        onClose={() => {
+          setScheduleOpen(false);
+          setScheduleSent(false);
+          setScheduleMsg("");
+          setScheduleDate("");
+        }}
+        title="Schedule a Viewing"
+      >
+        {scheduleSent ? (
+          <div className="p-8 text-center">
+            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <CheckCircle size={32} className="text-green-500" />
+            </div>
+            <h3 className="text-lg font-bold text-slate-800 mb-2">
+              Viewing Requested!
+            </h3>
+            <p className="text-slate-500 text-sm">
+              {property.ownerName} will confirm your preferred date shortly.
+            </p>
+            <button
+              onClick={() => {
+                setScheduleOpen(false);
+                setScheduleSent(false);
+                setScheduleMsg("");
+                setScheduleDate("");
+              }}
+              className="mt-5 px-6 py-2.5 bg-blue-600 text-white rounded-xl font-semibold text-sm border-none cursor-pointer"
+            >
+              Done
+            </button>
+          </div>
+        ) : (
+          <div className="p-6 space-y-4 text-left">
+            <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl">
+              <img
+                src={property.ownerImage || "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=80&h=80&fit=crop"}
+                alt={property.ownerName}
+                className="w-10 h-10 rounded-full object-cover"
+              />
+              <div>
+                <p className="font-semibold text-slate-800 text-sm">
+                  {property.ownerName}
+                </p>
+                <p className="text-xs text-teal-600">
+                  Verified Host · Responds within 2 hrs
+                </p>
+              </div>
+            </div>
+            <div>
+              <label className="text-sm font-semibold text-slate-600 mb-1.5 block">
+                Preferred Date
+              </label>
+              <div className="relative">
+                <Calendar
+                  size={16}
+                  className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+                />
+                <input
+                  type="date"
+                  value={scheduleDate}
+                  onChange={(e) => setScheduleDate(e.target.value)}
+                  disabled={sendingSchedule}
+                  min={new Date().toISOString().split("T")[0]}
+                  className="w-full border border-gray-200 rounded-xl pl-11 pr-4 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 h-11"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-sm font-semibold text-slate-600 mb-1.5 block">
+                Message
+              </label>
+              <textarea
+                rows={4}
+                value={scheduleMsg}
+                onChange={(e) => setScheduleMsg(e.target.value)}
+                placeholder={`Hi ${property.ownerName}, I'd like to schedule a viewing for ${property.title}...`}
+                disabled={sendingSchedule}
+                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 resize-none"
+              />
+            </div>
+            <button
+              onClick={handleScheduleSubmit}
+              disabled={sendingSchedule}
+              className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-2 border-none cursor-pointer disabled:opacity-60"
+            >
+              <Send size={16} />
+              {sendingSchedule ? "Sending..." : "Request Viewing"}
+            </button>
+          </div>
+        )}
+      </Modal>
+
+      {/* Login Prompt Modal */}
+      <LoginPromptModal
+        open={loginPromptOpen}
+        onClose={() => setLoginPromptOpen(false)}
+        action={loginPromptAction}
+      />
     </div>
   );
 }
