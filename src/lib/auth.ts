@@ -1,24 +1,21 @@
-import { MongoClient, Db } from "mongodb";
 import { betterAuth } from "better-auth";
-import { mongodbAdapter } from "better-auth/adapters/mongodb";
-
-const client: MongoClient = new MongoClient(process.env.MONGODB_URI as string);
-const db: Db = client.db("StayNest");
 
 export const auth = betterAuth({
-  database: mongodbAdapter(db, {
-    client: client,
-  }),
+  // ডাটাবেস অডাপ্টার সরিয়ে এখানে 'memory' ব্যবহার করা হয়েছে
+  database: {
+    type: "memory", 
+  },
   emailAndPassword: {
     enabled: true,
   },
-  socialProviders: {
-    google: {
-      clientId: process.env.GOOGLE_CLIENT_ID as string,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET as string,
+  user: {
+    additionalFields: {
+      role: {
+        type: "string",
+        required: false,
+        defaultValue: "user",
+        input: false,
+      },
     },
   },
-  trustedOrigins: [
-    process.env.BETTER_AUTH_URL || "http://localhost:3000",
-  ],
 });
