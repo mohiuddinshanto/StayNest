@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
@@ -278,6 +278,9 @@ export default function ManagePropertiesPage() {
                         >
                           {p.status}
                         </Badge>
+                        {p.status === "rented" && p.rentedByName && (
+                          <p className="text-[11px] text-slate-400 mt-1">Rented by {p.rentedByName}</p>
+                        )}
                       </td>
                       <td className="px-5 py-4">
                         <div
@@ -368,6 +371,9 @@ export default function ManagePropertiesPage() {
                         >
                           {p.status}
                         </Badge>
+                        {p.status === "rented" && p.rentedByName && (
+                          <span className="text-[11px] text-slate-400">Rented by {p.rentedByName}</span>
+                        )}
                         <Badge variant={approvalBadgeVariant(p.approvalStatus)}>
                           {p.approvalStatus || "pending"}
                         </Badge>

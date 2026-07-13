@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
@@ -11,6 +11,7 @@ import {
   Clock,
   MessageSquare,
   Mail,
+  Key,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -30,8 +31,9 @@ import {
   fetchOwnerAnalytics,
   fetchReceivedInquiries,
   markInquiryAsRead,
+  fetchMyRentals,
 } from "@/lib/api";
-import type { OwnerAnalytics, Inquiry } from "@/types";
+import type { OwnerAnalytics, Inquiry, Property } from "@/types";
 
 const CHART_MONTHLY = [
   { month: "Jan", revenue: 42000, bookings: 2.8 },
@@ -60,6 +62,8 @@ export default function DashboardPage() {
 
   const [inquiries, setInquiries] = useState<Inquiry[]>([]);
   const [inquiriesLoading, setInquiriesLoading] = useState(true);
+  const [rentals, setRentals] = useState<Property[]>([]);
+  const [rentalsLoading, setRentalsLoading] = useState(true);
 
   useEffect(() => {
     setMounted(true);
@@ -120,6 +124,21 @@ export default function DashboardPage() {
     };
   }, [isLoggedIn, user]);
 
+  useEffect(() => {
+    if (!isLoggedIn || user?.role !== "user") return;
+
+    let cancelled = false;
+    setRentalsLoading(true);
+    fetchMyRentals()
+      .then((data) => { if (!cancelled) setRentals(data); })
+      .catch((err) => {
+        console.error("Failed to load rentals:", err);
+        if (!cancelled) setRentals([]);
+      })
+      .finally(() => { if (!cancelled) setRentalsLoading(false); });
+
+    return () => { cancelled = true; };
+  }, [isLoggedIn, user?.role]);
   const handleInquiryClick = async (inquiry: Inquiry) => {
     if (inquiry.status !== "unread") return;
 
@@ -150,6 +169,43 @@ export default function DashboardPage() {
     );
   }
 
+  if (user.role === "user") {
+    return (
+      <div className="min-h-screen bg-slate-50 pt-24 pb-16">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-left">
+          <div className="mb-8">
+            <p className="text-slate-400 text-sm">Welcome back,</p>
+            <h1 className="text-3xl font-extrabold text-slate-800">My Rentals</h1>
+            <p className="text-slate-500 mt-1">Your confirmed StayNest properties.</p>
+          </div>
+          {rentalsLoading ? (
+            <div className="bg-white rounded-2xl p-12 text-center border border-gray-100"><div className="w-8 h-8 border-4 border-blue-600/30 border-t-blue-600 rounded-full animate-spin mx-auto" /></div>
+          ) : rentals.length === 0 ? (
+            <div className="bg-white rounded-2xl p-12 text-center border border-gray-100 shadow-sm">
+              <Key size={48} className="text-slate-300 mx-auto mb-4" />
+              <h2 className="text-xl font-bold text-slate-700 mb-2">No rentals yet</h2>
+              <p className="text-slate-400 text-sm mb-6">Explore available properties and rent the one that feels like home.</p>
+              <button onClick={() => router.push("/explore")} className="px-6 py-3 bg-blue-600 text-white rounded-xl font-bold border-none cursor-pointer">Explore Properties</button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              {rentals.map((rental) => (
+                <button key={rental.id} onClick={() => router.push(`/property/${rental.id}`)} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden text-left hover:shadow-md transition-shadow cursor-pointer p-0">
+                  <img src={rental.images[0]} alt={rental.title} className="w-full h-44 object-cover bg-slate-100" />
+                  <div className="p-5">
+                    <div className="flex items-center justify-between gap-3"><h2 className="font-bold text-slate-800 line-clamp-1">{rental.title}</h2><Badge variant="red">Rented</Badge></div>
+                    <p className="text-sm text-slate-500 mt-1">{rental.address}, {rental.city}</p>
+                    <p className="text-blue-600 font-extrabold mt-3">${new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(rental.rent)}<span className="text-slate-400 text-sm font-medium"> / month</span></p>
+                    {rental.rentedAt && <p className="text-xs text-slate-400 mt-2">Confirmed {new Date(rental.rentedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</p>}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
   // Filter properties owned by the current authenticated user
   const myProps = properties.filter(
     (p) => p.ownerId === user.id || p.ownerEmail === user.email
@@ -239,7 +295,7 @@ export default function DashboardPage() {
           {[
             {
               label: "Total Revenue",
-              value: analyticsLoading ? "…" : fmt(totalRevenue),
+              value: analyticsLoading ? "â€¦" : fmt(totalRevenue),
               change: myProps.length > 0 ? "+12.4% vs last month" : "No listings active",
               icon: DollarSign,
               color: "bg-blue-600",
@@ -247,7 +303,7 @@ export default function DashboardPage() {
             },
             {
               label: "Total Reviews",
-              value: analyticsLoading ? "…" : String(totalReviews),
+              value: analyticsLoading ? "â€¦" : String(totalReviews),
               change: `Across ${myProps.length} listing${myProps.length === 1 ? "" : "s"}`,
               icon: Star,
               color: "bg-purple-500",
@@ -255,7 +311,7 @@ export default function DashboardPage() {
             },
             {
               label: "Pending Approval",
-              value: analyticsLoading ? "…" : String(pendingApproval),
+              value: analyticsLoading ? "â€¦" : String(pendingApproval),
               change: pendingApproval > 0 ? "Awaiting review" : "All caught up",
               icon: Clock,
               color: "bg-amber-500",
@@ -263,7 +319,7 @@ export default function DashboardPage() {
             },
             {
               label: "Total Inquiries",
-              value: analyticsLoading ? "…" : String(totalInquiries),
+              value: analyticsLoading ? "â€¦" : String(totalInquiries),
               change: `${unreadInquiries} unread`,
               icon: MessageSquare,
               color: "bg-teal-500",
@@ -502,7 +558,7 @@ export default function DashboardPage() {
 
                   <p className="text-xs text-slate-500 mb-2">
                     {inquiry.senderName}
-                    {inquiry.senderEmail ? ` · ${inquiry.senderEmail}` : ""}
+                    {inquiry.senderEmail ? ` Â· ${inquiry.senderEmail}` : ""}
                   </p>
 
                   <p className="text-sm text-slate-600 line-clamp-2">{inquiry.message}</p>
@@ -521,3 +577,4 @@ export default function DashboardPage() {
     </div>
   );
 }
+

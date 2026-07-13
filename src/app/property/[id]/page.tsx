@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState, useEffect, useCallback, use } from "react";
 import { useRouter } from "next/navigation";
@@ -29,6 +29,7 @@ import {
   Star,
   Pencil,
   Calendar,
+  Key,
 } from "lucide-react";
 
 import { useProperties } from "@/context/PropertyContext";
@@ -37,7 +38,7 @@ import { Stars } from "@/components/Stars";
 import { Badge } from "@/components/Badge";
 import { Modal } from "@/components/Modal";
 import { LoginPromptModal } from "@/components/LoginPromptModal";
-import { fetchPropertyById, createReview, createInquiry, fetchProperties } from "@/lib/api";
+import { fetchPropertyById, createReview, createInquiry, fetchProperties, rentProperty } from "@/lib/api";
 import type { Property } from "@/types";
 import toast from "react-hot-toast";
 
@@ -178,6 +179,7 @@ export default function PropertyDetailsPage({ params }: PageProps) {
   const [scheduleDate, setScheduleDate] = useState("");
   const [scheduleSent, setScheduleSent] = useState(false);
   const [sendingSchedule, setSendingSchedule] = useState(false);
+  const [renting, setRenting] = useState(false);
 
   // Login prompt modal state
   const [loginPromptOpen, setLoginPromptOpen] = useState(false);
@@ -296,6 +298,25 @@ export default function PropertyDetailsPage({ params }: PageProps) {
     }
   };
 
+  const handleRentNowClick = async () => {
+    if (!isLoggedIn) {
+      openLoginPrompt("rent this property");
+      return;
+    }
+    if (!property || property.status !== "available") return;
+
+    setRenting(true);
+    try {
+      const updated = await rentProperty(property.id);
+      setProperty(updated);
+      toast.success("Rental confirmed! You can view it from your dashboard.");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to rent this property");
+      await loadProperty();
+    } finally {
+      setRenting(false);
+    }
+  };
   const handleReviewSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isLoggedIn) {
@@ -446,7 +467,7 @@ export default function PropertyDetailsPage({ params }: PageProps) {
                 {
                   icon: Square,
                   label: "Area",
-                  value: `${property.area.toLocaleString()} ft²`,
+                  value: `${property.area.toLocaleString()} ftÂ²`,
                 },
               ].map(({ icon: Icon, label, value }) => (
                 <div
@@ -640,7 +661,7 @@ export default function PropertyDetailsPage({ params }: PageProps) {
               <div className="flex items-center gap-1 mb-5">
                 <Stars rating={property.rating} size={13} />
                 <span className="text-slate-500 text-sm">
-                  {property.rating} · {property.reviewCount} reviews
+                  {property.rating} Â· {property.reviewCount} reviews
                 </span>
               </div>
               <div className="space-y-3 text-sm mb-5">
@@ -679,17 +700,31 @@ export default function PropertyDetailsPage({ params }: PageProps) {
               ) : (
                 <>
                   <button
-                    onClick={handleContactOwnerClick}
-                    className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition-colors mb-3 border-none cursor-pointer"
+                    onClick={handleRentNowClick}
+                    disabled={property.status !== "available" || renting}
+                    className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition-colors mb-3 border-none cursor-pointer disabled:cursor-not-allowed disabled:bg-slate-400"
                   >
-                    Contact Owner
+                    <span className="inline-flex items-center gap-2">
+                      <Key size={16} />
+                      {renting ? "Confirming Rental..." : property.status === "available" ? "Rent Now" : "Already Rented"}
+                    </span>
                   </button>
-                  <button
-                    onClick={handleScheduleViewingClick}
-                    className="w-full py-3 border-2 border-blue-600 text-blue-600 hover:bg-blue-50 bg-transparent font-semibold rounded-xl transition-colors text-sm cursor-pointer"
-                  >
-                    Schedule a Viewing
-                  </button>
+                  {property.status === "available" && (
+                    <button
+                      onClick={handleContactOwnerClick}
+                      className="w-full py-3 border-2 border-blue-600 text-blue-600 hover:bg-blue-50 bg-transparent font-semibold rounded-xl transition-colors text-sm cursor-pointer mb-3"
+                    >
+                      Contact Owner
+                    </button>
+                  )}
+                  {property.status === "available" && (
+                    <button
+                      onClick={handleScheduleViewingClick}
+                      className="w-full py-3 border-2 border-blue-600 text-blue-600 hover:bg-blue-50 bg-transparent font-semibold rounded-xl transition-colors text-sm cursor-pointer"
+                    >
+                      Schedule a Viewing
+                    </button>
+                  )}
                 </>
               )}
             </div>
@@ -816,7 +851,7 @@ export default function PropertyDetailsPage({ params }: PageProps) {
                   {property.ownerName}
                 </p>
                 <p className="text-xs text-teal-600">
-                  Verified Host · Responds within 2 hrs
+                  Verified Host Â· Responds within 2 hrs
                 </p>
               </div>
             </div>
@@ -892,7 +927,7 @@ export default function PropertyDetailsPage({ params }: PageProps) {
                   {property.ownerName}
                 </p>
                 <p className="text-xs text-teal-600">
-                  Verified Host · Responds within 2 hrs
+                  Verified Host Â· Responds within 2 hrs
                 </p>
               </div>
             </div>

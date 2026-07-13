@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
@@ -161,7 +161,7 @@ export default function AdminPage() {
 
   // Applies a fresh property record (as returned by the API) to both the
   // "Pending Approvals" and "All Properties" lists, so every view stays in sync
-  // no matter which tab the change was made from — no full page reload needed.
+  // no matter which tab the change was made from â€” no full page reload needed.
   const applyStatusUpdate = (updated: AdminProperty) => {
     setAllProps((prev) => prev.map((p) => (p.id === updated.id ? { ...p, ...updated } : p)));
     setPendingProps((prev) => {
@@ -171,7 +171,7 @@ export default function AdminPage() {
           ? prev.map((p) => (p.id === updated.id ? { ...p, ...updated } : p))
           : [...prev, updated];
       }
-      // No longer pending (approved or rejected) — drop it from the pending list.
+      // No longer pending (approved or rejected) â€” drop it from the pending list.
       return prev.filter((p) => p.id !== updated.id);
     });
   };
@@ -215,7 +215,7 @@ export default function AdminPage() {
     }
   };
 
-  // Generic handler used by the "All Properties" tab Actions — covers Approve
+  // Generic handler used by the "All Properties" tab Actions â€” covers Approve
   // and "Set to Pending" (Reject still routes through the reason modal above).
   const handleSetStatus = async (id: string, approvalStatus: "approved" | "pending") => {
     setStatusUpdatingId(id);
@@ -253,7 +253,7 @@ export default function AdminPage() {
     }
   };
 
-  // Shared Actions button group for the "All Properties" tab — always offers
+  // Shared Actions button group for the "All Properties" tab â€” always offers
   // whichever transitions make sense given the property's current approvalStatus.
   const renderPropertyActions = (p: AdminProperty) => {
     const isUpdating = statusUpdatingId === p.id;
@@ -529,6 +529,9 @@ export default function AdminPage() {
                             >
                               {p.status}
                             </Badge>
+                            {p.status === "rented" && p.rentedByName && (
+                              <p className="text-[11px] text-slate-400 mt-1">Renter: {p.rentedByName}</p>
+                            )}
                           </td>
                           <td className="px-5 py-4">{renderPropertyActions(p)}</td>
                         </tr>
@@ -555,7 +558,7 @@ export default function AdminPage() {
                             {p.title}
                           </p>
                           <p className="text-xs text-slate-400 mt-1">
-                            {p.ownerName} · {p.city}
+                            {p.ownerName} Â· {p.city}
                           </p>
                           <div className="flex items-center flex-wrap gap-2 mt-2">
                             <span className="text-blue-600 font-bold text-sm">
@@ -564,6 +567,9 @@ export default function AdminPage() {
                             <Badge variant={approvalBadgeVariant(p.approvalStatus)}>
                               {p.approvalStatus || "pending"}
                             </Badge>
+                            {p.status === "rented" && p.rentedByName && (
+                              <p className="text-[11px] text-slate-400">Renter: {p.rentedByName}</p>
+                            )}
                           </div>
                         </div>
                       </div>

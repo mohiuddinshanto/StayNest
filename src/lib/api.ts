@@ -1,4 +1,4 @@
-import type {
+﻿import type {
   Property,
   PropertyFilters,
   PropertiesResponse,
@@ -105,6 +105,22 @@ export async function fetchMyProperties(): Promise<Property[]> {
     credentials: "include",
   });
   const data = await handleResponse<{ success: boolean; data: Property[] }>(res);
+  return data.data;
+}
+export async function fetchMyRentals(): Promise<Property[]> {
+  const res = await fetch(`${API_URL}/my-rentals`, {
+    credentials: "include",
+  });
+  const data = await handleResponse<{ success: boolean; data: Property[] }>(res);
+  return data.data;
+}
+
+export async function rentProperty(id: string): Promise<Property> {
+  const res = await fetch(`${API_URL}/properties/${id}/rent`, {
+    method: "POST",
+    credentials: "include",
+  });
+  const data = await handleResponse<PropertyResponse>(res);
   return data.data;
 }
 

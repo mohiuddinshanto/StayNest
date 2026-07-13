@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { createContext, useContext, useState, useEffect } from "react";
 import {
@@ -54,6 +54,10 @@ export interface Property {
   approvalStatus: "pending" | "approved" | "rejected";
   rejectionReason?: string;
   createdAt: string;
+  rentedById?: string;
+  rentedByName?: string;
+  rentedByEmail?: string;
+  rentedAt?: string;
 }
 
 export interface AuthUser {

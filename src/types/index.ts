@@ -1,4 +1,4 @@
-// ============================================
+﻿// ============================================
 // REVIEW TYPES
 // ============================================
 
@@ -44,6 +44,10 @@ export interface Property {
   approvalStatus: "pending" | "approved" | "rejected"; // Added for approval system
   rejectionReason?: string; // Added for rejection reason
   createdAt: string;
+  rentedById?: string;
+  rentedByName?: string;
+  rentedByEmail?: string;
+  rentedAt?: string;
 }
 
 export interface Pagination {
@@ -197,6 +201,10 @@ export interface AdminProperty {
   approvalStatus: "pending" | "approved" | "rejected";
   rejectionReason?: string;
   createdAt: string;
+  rentedById?: string;
+  rentedByName?: string;
+  rentedByEmail?: string;
+  rentedAt?: string;
 }
 
 export interface AdminPropertiesResponse {
