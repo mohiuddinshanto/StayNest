@@ -1,356 +1,100 @@
-# 🏠 StayNest — Rental Property Platform
+﻿# StayNest
 
-A modern, full-stack rental property marketplace built with **Next.js 16**, **Better Auth**, and **MongoDB**. StayNest connects property owners with potential renters through an intuitive, feature-rich platform.
+A full-stack rental property platform where renters can discover homes, owners can manage listings, and administrators can review platform activity.
 
-🔗 **Live URL:** [https://staynest-next.vercel.app](https://staynest-next.vercel.app)
+## Live demo
 
+[Open StayNest](https://staynest-next.vercel.app)
 
----
+## What you can do
 
-## ✨ Features
+- Browse, search, filter, and view rental properties
+- Sign up and sign in with Better Auth
+- Rent an available, approved property from its details page
+- View confirmed rentals in the renter dashboard
+- Send messages and viewing requests to property owners
+- Create, edit, manage, and track owner listings
+- Review properties and see ratings
+- Approve, reject, and monitor listings as an administrator
 
-### 🔐 Authentication
-- Email/password authentication with Better Auth
-- Google OAuth 2.0 social login
-- Secure session management with cookies
-- Protected routes and role-based access
-- Demo account for quick testing
+## Tech stack
 
-### 🏘️ Property Management
-- **CRUD Operations** — Create, read, update, and delete property listings
-- **Rich Property Data** — Title, description, price, location, amenities, images, availability status
-- **Smart Filtering** — Search by city, property type, price range, bedrooms, and more
-- **Pagination** — Efficient browsing with server-side pagination
-- **Property Status** — Available, Rented, or Pending
-- **Featured Listings** — Highlight premium properties
+- Next.js 16, React 19, and TypeScript
+- Tailwind CSS and Lucide icons
+- Better Auth for session-based authentication
+- Express and MongoDB backend, reached through a Next.js API proxy
+- Recharts for dashboard visualizations
 
-### 👤 User Dashboard
-- Property overview with key metrics
-- Analytics: income vs. expenses charts, property type distribution
-- Performance metrics: monthly rent value, active listings, views, ratings
-- Quick actions: add, edit, or delete properties from the dashboard
+## Project structure
 
-### ⭐ Review System
-- Star ratings (1–5) with detailed comments
-- Review aggregation and distribution charts
-- Authenticated users only
-- Real-time updates
+```text
+src/
+  app/            # Pages, API proxy routes, and layouts
+  components/     # Reusable UI components
+  context/        # Property and session-aware client state
+  lib/            # API and authentication clients
+  types/          # Shared TypeScript types
+```
 
-### 🎨 UI/UX
-- Responsive, mobile-first design with Tailwind CSS
-- Shadcn/ui-inspired components
-- Interactive elements: modal dialogs, dropdowns, toast notifications
-- Skeleton loading states for better UX
-- Dark/light mode (via `next-themes`)
+## Run locally
 
-### 🔌 Technical Features
-- Secure API proxy with session token forwarding
-- End-to-end TypeScript type safety
-- MongoDB database with Better Auth adapter
-- Feature-based file structure
-- Server Components, lazy loading, and image optimization
+### 1. Start the backend
 
----
-
-## 🛠️ Tech Stack
-
-### Frontend
-| Technology | Purpose |
-|---|---|
-| Next.js 16 | React framework with App Router |
-| React 19 | UI library |
-| Tailwind CSS 4 | Utility-first styling |
-| Lucide React | Icon library |
-| Recharts | Data visualization charts |
-| React Hot Toast | Toast notifications |
-| Better Auth Client | Authentication client |
-
-### Backend
-| Technology | Purpose |
-|---|---|
-| Better Auth | Authentication server |
-| MongoDB | Database |
-| MongoDB Adapter | Database adapter for Better Auth |
-| Next.js API Routes | Backend proxy endpoints |
-
-### Development
-| Tool | Purpose |
-|---|---|
-| TypeScript | Static type checking |
-| ESLint | Code linting |
-| Next.js Dev Server | Local development |
-
----
-
-## 📦 Installation & Setup
-
-### 1. Prerequisites
-- Node.js (v20 or higher)
-- MongoDB instance (local or cloud)
-- Google OAuth credentials (optional)
-
-### 2. Clone & Install
 ```bash
-git clone https://github.com/yourusername/staynest.git
-cd staynest
+cd ../../Backend
 npm install
-```
-
-### 3. Environment Variables
-Create a `.env.local` file in the root directory:
-
-```env
-# Next.js
-NEXT_PUBLIC_APP_URL=http://localhost:3000
-
-# Better Auth
-BETTER_AUTH_URL=http://localhost:3000
-NEXT_PUBLIC_BETTER_AUTH_URL=http://localhost:3000
-
-# MongoDB
-MONGODB_URI=mongodb://localhost:27017/staynest
-
-# Backend API (if different from Next.js)
-NEXT_PUBLIC_API_URL=http://localhost:5000
-
-# Google OAuth (optional)
-GOOGLE_CLIENT_ID=your_google_client_id
-GOOGLE_CLIENT_SECRET=your_google_client_secret
-
-# Session Security
-BETTER_AUTH_SECRET=your_secret_key_here
-```
-
-### 4. Database Setup
-Make sure MongoDB is running:
-
-```bash
-# Local MongoDB
-mongod --dbpath /path/to/data
-
-# Or use MongoDB Atlas for cloud deployment
-```
-
-### 5. Run Development Server
-```bash
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) in your browser.
+The backend listens on `http://localhost:5000` by default.
 
----
+### 2. Configure the frontend
 
-## 📁 Project Structure
+Create `.env.local` in this directory:
 
-```
-staynest/
-├── src/
-│   ├── app/
-│   │   ├── about/page.tsx
-│   │   ├── add-property/page.tsx
-│   │   ├── auth/page.tsx
-│   │   ├── contact/page.tsx
-│   │   ├── dashboard/page.tsx
-│   │   ├── explore/page.tsx
-│   │   ├── manage/page.tsx
-│   │   ├── manage/edit/[id]/page.tsx
-│   │   ├── property/[id]/page.tsx
-│   │   └── api/
-│   │       ├── auth/[...all]/route.ts
-│   │       └── backend/[...path]/route.ts
-│   ├── components/
-│   │   ├── AppShell.tsx
-│   │   ├── Badge.tsx
-│   │   ├── Footer.tsx
-│   │   ├── Modal.tsx
-│   │   ├── Navbar.tsx
-│   │   ├── PropertyCard.tsx
-│   │   ├── SkeletonCard.tsx
-│   │   └── Stars.tsx
-│   ├── context/
-│   │   └── PropertyContext.tsx
-│   ├── lib/
-│   │   ├── api.ts
-│   │   ├── auth-client.ts
-│   │   └── auth.ts
-│   └── types/
-│       └── index.ts
-├── public/
-├── package.json
-├── next.config.js
-├── tailwind.config.js
-└── README.md
+```env
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+BETTER_AUTH_URL=http://localhost:3000
+NEXT_PUBLIC_BETTER_AUTH_URL=http://localhost:3000
+NEXT_PUBLIC_API_URL=http://localhost:5000
+MONGODB_URI=your_mongodb_connection_string
+BETTER_AUTH_SECRET=replace_with_a_long_random_secret
 ```
 
----
+Add `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` only when Google login is enabled.
 
-## 🔧 Core Functionality
-
-### Authentication Flow
-1. **Sign Up** — User registers with email/password or Google
-2. **Session Management** — JWT stored in HTTP-only cookies
-3. **Protected Routes** — Middleware checks authentication status
-4. **Sign Out** — Clears session and redirects
-
-### Property CRUD
-
-**Create** — `POST /api/backend/properties`
-```typescript
-const property = await createProperty({
-  title: "Spacious Apartment",
-  rent: 2500,
-  city: "San Francisco",
-  // ...
-});
-```
-
-**Read** — `GET /api/backend/properties`
-```typescript
-const properties = await fetchProperties({
-  city: "SF",
-  minPrice: 1000,
-  maxPrice: 5000,
-  beds: 2,
-});
-```
-
-**Update** — `PUT /api/backend/properties/:id`
-```typescript
-const updated = await updateProperty(id, {
-  rent: 2600,
-  status: "rented",
-});
-```
-
-**Delete** — `DELETE /api/backend/properties/:id`
-```typescript
-await deleteProperty(id);
-```
-
-### Review System
-```typescript
-const review = await createReview({
-  propertyId: id,
-  rating: 5,
-  comment: "Amazing place!",
-  userName: "John Doe",
-});
-```
-
----
-
-## 🔒 Security Considerations
-- **HTTP-only Cookies** — Session tokens are not accessible via JavaScript
-- **CORS** — Proper origin validation in production
-- **Ownership Checks** — Users can only modify their own properties
-- **Input Validation** — Server-side validation for all form submissions
-- **Environment Variables** — Sensitive data stored in `.env.local`
-
----
-
-## 🚀 Deployment
-
-### Deploy to Vercel (Recommended)
-1. Push code to GitHub
-2. Import project to Vercel
-3. Add environment variables
-4. Deploy
+### 3. Start the frontend
 
 ```bash
-# Build for production
-npm run build
-
-# Start production server
-npm start
+npm install
+npm run dev
 ```
 
-### Docker Deployment
-```dockerfile
-FROM node:20-alpine
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci --only=production
-COPY . .
-RUN npm run build
-EXPOSE 3000
-CMD ["npm", "start"]
-```
+Open [http://localhost:3000](http://localhost:3000).
 
----
+## Available scripts
 
-## 🧪 Testing
 ```bash
-# Run tests (if configured)
-npm test
-
-# Lint code
-npm run lint
-
-# Type checking
-npx tsc --noEmit
+npm run dev      # Start development server
+npm run build    # Create production build
+npm run start    # Run production server
+npm run lint     # Run ESLint
 ```
 
----
+## Deployment
 
-## 🤝 Contributing
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+The frontend is deployed on Vercel at [staynest-next.vercel.app](https://staynest-next.vercel.app). Configure `NEXT_PUBLIC_API_URL` in Vercel to point to the deployed backend; the app forwards requests through `/api/backend` so browser sessions are preserved.
 
-### Coding Standards
-- Use TypeScript for all new files
-- Follow ESLint rules
-- Write meaningful component and function names
-- Add comments for complex logic
-- Keep components focused and reusable
+## Roles
 
----
+| Role | Main access |
+| --- | --- |
+| User | Explore properties, rent, message owners, view My Rentals |
+| Owner | Create and manage properties, receive inquiries, view analytics |
+| Admin | Review listings and access platform-wide dashboards |
 
-## 📄 License
-This project is licensed under the MIT License — see the `LICENSE` file for details.
+## Notes
 
----
-
-## 🙏 Acknowledgments
-- [Better Auth](https://www.better-auth.com/) for authentication
-- [MongoDB](https://www.mongodb.com/) for database
-- [Tailwind CSS](https://tailwindcss.com/) for styling
-- [Unsplash](https://unsplash.com/) for placeholder images
-- [Lucide Icons](https://lucide.dev/) for beautiful icons
-
----
-
-## 📞 Support
-- **Email:** support@staynest.com
-- **Documentation:** docs.staynest.com
-- **GitHub Issues:** github.com/yourusername/staynest/issues
-
----
-
-## 🗺️ Roadmap
-- [x] Authentication with Google OAuth
-- [x] Property CRUD operations
-- [x] Review system
-- [ ] Admin dashboard
-- [ ] Advanced search & filtering
-- [ ] Booking system
-- [ ] Payment integration (Stripe)
-- [ ] Email notifications
-- [ ] Mobile app (React Native)
-- [ ] AI-powered property recommendations
-
----
-
-## 🎯 Demo Credentials
-
-**Demo User:**
-- Email: `alex@example.com`
-- Password: `demo12345`
-
-Click **"Login as Demo User"** on the auth page to try the platform instantly.
-
----
-
-<p align="center">Made with ❤️ by the StayNest Team</p>
+- Only approved and available properties can be rented.
+- A property can only be confirmed once; the API prevents concurrent rental confirmations.
+- Do not commit `.env.local` or any database credentials.
